@@ -1,0 +1,116 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  font-family: "Outfit", sans-serif;
+  overflow-x: clip;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+@layer base {
+  :root {
+    --background: 220 15% 6%;
+    --foreground: 210 20% 98%;
+    
+    --card: 220 14% 9%;
+    --card-foreground: 210 20% 98%;
+    
+    --popover: 220 14% 9%;
+    --popover-foreground: 210 20% 98%;
+    
+    --primary: 262 83% 58%;
+    --primary-foreground: 210 20% 98%;
+    
+    --secondary: 173 80% 40%;
+    --secondary-foreground: 210 20% 98%;
+    
+    --muted: 220 14% 12%;
+    --muted-foreground: 215 16% 65%;
+    
+    --accent: 33 100% 53%;
+    --accent-foreground: 220 15% 6%;
+    
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 210 20% 98%;
+    
+    --border: 220 14% 15%;
+    --input: 220 14% 15%;
+    --ring: 262 83% 58%;
+    
+    --radius: 0.75rem;
+
+    --rating-star: 45 93% 47%;
+    --rating-star-empty: 220 14% 25%;
+    --stat-card-bg: 220 14% 11%;
+    --stat-card-border: 220 14% 16%;
+    
+    --sidebar-background: 220 15% 6%;
+    --sidebar-foreground: 210 20% 98%;
+    --sidebar-primary: 262 83% 58%;
+    --sidebar-primary-foreground: 210 20% 98%;
+    --sidebar-accent: 220 14% 12%;
+    --sidebar-accent-foreground: 210 20% 98%;
+    --sidebar-border: 220 14% 15%;
+    --sidebar-ring: 262 83% 58%;
+  }
+}
+
+@layer components {
+  .gaming-glow {
+    box-shadow: 0 0 20px hsl(var(--primary) / 0.3);
+  }
+  
+  .gaming-glow-secondary {
+    box-shadow: 0 0 20px hsl(var(--secondary) / 0.3);
+  }
+  
+  .gaming-glow-accent {
+    box-shadow: 0 0 20px hsl(var(--accent) / 0.3);
+  }
+  
+  .stat-card-surface {
+    background-color: hsl(var(--stat-card-bg));
+    border: 1px solid hsl(var(--stat-card-border));
+  }
+
+  .logo-container {
+    object-fit: contain;
+    object-position: center;
+    aspect-ratio: auto;
+    width: 100%;
+    height: 100%;
+    background-color: #000000;
+  }
+
+  /* Admin UI Custom Classes */
+  .admin-action-group {
+    @apply flex items-center gap-2 z-20 bg-background/90 backdrop-blur-md p-1.5 rounded-xl border border-border shadow-lg;
+  }
+  
+  .admin-action-btn {
+    @apply p-2 text-foreground hover:bg-muted rounded-lg transition-colors flex items-center justify-center;
+  }
+
+  .modal-overlay-custom {
+    @apply fixed inset-0 z-50 bg-black/80 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0;
+  }
+
+  /* Account Code Styling */
+  .account-code-badge {
+    @apply inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-secondary/15 text-secondary border border-secondary/20 text-xs font-mono font-bold tracking-widest uppercase transition-colors;
+  }
+  
+  .account-code-badge:hover {
+    @apply bg-secondary/25 border-secondary/40;
+  }
+
+  .account-code-copy-btn {
+    @apply p-1 rounded-sm text-secondary hover:text-foreground hover:bg-secondary/30 transition-colors cursor-pointer shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background;
+  }
+}
