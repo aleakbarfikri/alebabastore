@@ -7,7 +7,7 @@ import Footer from '@/components/Footer.jsx';
 import UploadZone from '@/components/UploadZone.jsx';
 import BuyerInquiryTable from '@/components/BuyerInquiryTable.jsx';
 import GameAccountCard from '@/components/GameAccountCard.jsx';
-import StatisticsCard from '@/components/StatisticsCard.jsx';
+import StatisticsCard from '@/components/StatisticsCard.jsx'; import AdminPasswordChangeCard from '@/components/AdminPasswordChangeCard.jsx';
 import EditItemModal from '@/components/EditItemModal.jsx';
 import { useGameAccounts } from '@/hooks/useGameAccounts.js';
 import { useBuyerInquiries } from '@/hooks/useBuyerInquiries.js';
@@ -251,7 +251,7 @@ const AdminDashboard = () => {
             />
           </div>
 
-          {/* Game Accounts Management */}
+          <AdminPasswordChangeCard /> {/* Game Accounts Management */}
           <section className="mb-16">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
               <div className="flex items-center gap-4">
