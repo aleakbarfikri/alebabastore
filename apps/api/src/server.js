@@ -24,7 +24,10 @@ const upload = multer({
   fileFilter: (_req, file, cb) => cb(null, /^image\/(jpeg|png|webp|avif|heic|heif)$/i.test(file.mimetype)),
 });
 const port = Number(process.env.PORT || 8080);
-const vercelUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : '';
+const vercelHostname = process.env.VERCEL_ENV === 'production'
+  ? (process.env.VERCEL_PROJECT_PRODUCTION_URL || process.env.VERCEL_URL)
+  : process.env.VERCEL_URL;
+const vercelUrl = vercelHostname ? `https://${vercelHostname}` : '';
 const publicBaseUrl = String(process.env.PUBLIC_BASE_URL || vercelUrl || `http://localhost:${port}`).replace(/\/$/, '');
 
 app.set('trust proxy', 1);

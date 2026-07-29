@@ -27,6 +27,9 @@ mencegah database tertukar saat deployment.
 Project Vercel dapat tetap menggunakan Root Directory `apps/web`. Rewrite
 `/api/:path*` di `apps/web/vercel.json` meneruskan semua endpoint ke satu
 Serverless Function Express, sementara Vite tetap menghasilkan frontend statis.
+Rewrite fallback berikutnya meneruskan route browser seperti `/payment-status`
+ke `index.html`, sehingga React Router tetap bekerja saat callback pembayaran
+dibuka langsung.
 Tambahkan semua environment
 variable dari `.env.example` ke Production dan Preview sebelum redeploy. Neon
 Integration milik Vercel biasanya menyediakan `DATABASE_URL`; backend menerima
