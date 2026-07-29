@@ -28,6 +28,10 @@ import { api } from '@/lib/apiClient.js';
 import { toast } from 'sonner';
 import { generateUniqueCode } from '@/lib/generateUniqueCode.js';
 
+const backupCodesFrom = (value) => (
+  String(value || '').split(/[\n,]+/).map((code) => code.trim()).filter(Boolean)
+);
+
 const AdminDashboard = () => {
   const { getCurrentUser } = useAuth();
   const adminUser = getCurrentUser();
@@ -59,6 +63,7 @@ const AdminDashboard = () => {
   });
   const [images, setImages] = useState([]);
   const [submitting, setSubmitting] = useState(false);
+  const backupCodeCount = backupCodesFrom(formData.backup_codes).length;
 
   const loadDashboardData = () => {
     fetchAllAccounts().catch(console.error);
@@ -88,6 +93,14 @@ const AdminDashboard = () => {
 
     if (!accountCode || typeof accountCode !== 'string' || accountCode.trim() === '') {
       toast.error('Failed to generate account code. Please try again.');
+      setSubmitting(false);
+      return;
+    }
+
+    if (!formData.credential_email.trim() || !formData.credential_password || backupCodeCount !== 8) {
+      toast.error(
+        `Isi email akun, password, dan tepat 8 kode cadangan Gmail. Saat ini terdeteksi ${backupCodeCount} kode.`,
+      );
       setSubmitting(false);
       return;
     }
@@ -479,7 +492,12 @@ const AdminDashboard = () => {
                             className="md:col-span-2 w-full px-4 py-3 bg-background border border-border rounded-xl resize-none"
                             placeholder={"Masukkan tepat 8 kode cadangan Gmail, satu kode per baris"} />
                         </div>
-                        <p className="text-xs text-muted-foreground mt-3">Data dienkripsi AES-256-GCM dan tidak pernah dikirim ke browser publik.</p>
+                        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs">
+                          <p className="text-muted-foreground">Data dienkripsi AES-256-GCM dan tidak pernah dikirim ke browser publik.</p>
+                          <p className={backupCodeCount === 8 ? 'text-emerald-500 font-semibold' : 'text-amber-500 font-semibold'}>
+                            {backupCodeCount}/8 kode terdeteksi
+                          </p>
+                        </div>
                       </div>
 
                       <div className="pt-4 border-t border-border flex justify-end">
