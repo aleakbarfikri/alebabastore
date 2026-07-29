@@ -29,6 +29,49 @@ const vercelHostname = process.env.VERCEL_ENV === 'production'
   : process.env.VERCEL_URL;
 const vercelUrl = vercelHostname ? `https://${vercelHostname}` : '';
 const publicBaseUrl = String(process.env.PUBLIC_BASE_URL || vercelUrl || `http://localhost:${port}`).replace(/\/$/, '');
+const PROVIDER_STATUSES = new Set(['pending', 'awaiting_confirmation', 'paid', 'expired', 'cancelled']);
+
+async function syncOrderFromTemanQRIS(orderId, { force = false } = {}) {
+  const localResult = await query(
+    `SELECT order_id,status,provider_checked_at FROM orders WHERE order_id=$1`,
+    [orderId],
+  );
+  const localOrder = localResult.rows[0];
+  if (!localOrder) {
+    const error = new Error('Order tidak ditemukan.');
+    error.status = 404;
+    throw error;
+  }
+
+  const checkedRecently = localOrder.provider_checked_at
+    && Date.now() - new Date(localOrder.provider_checked_at).getTime() < 15 * 60_000;
+  if (!force && (checkedRecently || localOrder.status !== 'pending')) return localOrder;
+
+  const result = await temanqris(`/orders/${encodeURIComponent(orderId)}`);
+  const providerOrder = result.order || result.data || result;
+  const providerStatus = String(providerOrder.status || '').toLowerCase();
+  const nextStatus = PROVIDER_STATUSES.has(providerStatus) ? providerStatus : localOrder.status;
+  const updated = await query(
+    `UPDATE orders
+        SET status=CASE WHEN status='paid' THEN status ELSE $2 END,
+            paid_at=CASE
+              WHEN status='paid' THEN paid_at
+              WHEN $2='paid' THEN COALESCE($3::timestamptz, now())
+              ELSE paid_at
+            END,
+            provider_payload=$4,
+            provider_checked_at=now(),
+            updated_at=now()
+      WHERE order_id=$1
+      RETURNING order_id,status,paid_at,fulfilled_at,created_at,provider_checked_at`,
+    [orderId, nextStatus, providerOrder.paid_at || null, result],
+  );
+
+  if (updated.rows[0]?.status === 'paid' && !updated.rows[0]?.fulfilled_at) {
+    fulfillOrder(orderId).catch((error) => console.error('[fulfillment]', orderId, error.message));
+  }
+  return updated.rows[0];
+}
 
 app.set('trust proxy', 1);
 app.use(helmet({ contentSecurityPolicy: false, crossOriginResourcePolicy: { policy: 'same-site' } }));
@@ -397,6 +440,12 @@ app.post('/api/checkout', publicWriteLimiter, async (req, res) => {
 });
 
 app.get('/api/orders/:orderId/status', async (req, res) => {
+  try {
+    await syncOrderFromTemanQRIS(req.params.orderId);
+  } catch (error) {
+    if (error.status === 404) throw error;
+    console.error('[payment-sync]', req.params.orderId, error.message);
+  }
   const result = await query(
     `SELECT order_id,status,paid_at,fulfilled_at,created_at FROM orders WHERE order_id=$1`,
     [req.params.orderId],
@@ -421,6 +470,11 @@ app.post('/api/admin/orders/:orderId/verify', requireAdmin, async (req, res) => 
   await query(`UPDATE orders SET status='paid',paid_at=now(),provider_payload=$2,updated_at=now() WHERE order_id=$1`, [req.params.orderId, result]);
   await fulfillOrder(req.params.orderId);
   res.json({ ok: true });
+});
+
+app.post('/api/admin/orders/:orderId/sync', requireAdmin, async (req, res) => {
+  const order = await syncOrderFromTemanQRIS(req.params.orderId, { force: true });
+  res.json(order);
 });
 
 app.post('/api/admin/orders/:orderId/resend', requireAdmin, async (req, res) => {
