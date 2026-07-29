@@ -9,13 +9,39 @@ const SESSION_DAYS = 7;
 export async function bootstrapAdmin() {
   const username = process.env.ADMIN_USERNAME || 'alebabastore';
   const password = process.env.ADMIN_INITIAL_PASSWORD;
-  const existing = await query('SELECT id FROM admins WHERE username = $1', [username]);
-  if (existing.rowCount) return;
+  const resetVersion = String(process.env.ADMIN_PASSWORD_RESET_VERSION || '').trim();
+  const existing = await query(
+    'SELECT id, password_reset_version FROM admins WHERE lower(username) = lower($1)',
+    [username],
+  );
+
+  if (existing.rowCount) {
+    const admin = existing.rows[0];
+    if (!resetVersion || admin.password_reset_version === resetVersion) return;
+    if (!password || password.length < 8) {
+      throw new Error('ADMIN_INITIAL_PASSWORD minimal 8 karakter diperlukan untuk reset admin.');
+    }
+
+    const passwordHash = await bcrypt.hash(password, 12);
+    await query(
+      `UPDATE admins
+          SET username=$2, password_hash=$3, password_reset_version=$4, updated_at=now()
+        WHERE id=$1`,
+      [admin.id, username, passwordHash, resetVersion],
+    );
+    await query('DELETE FROM admin_sessions WHERE admin_id=$1', [admin.id]);
+    console.info(`[bootstrap] Password admin "${username}" berhasil direset untuk versi ${resetVersion}.`);
+    return;
+  }
+
   if (!password || password.length < 8) {
     throw new Error('ADMIN_INITIAL_PASSWORD minimal 8 karakter diperlukan untuk membuat admin pertama.');
   }
   const passwordHash = await bcrypt.hash(password, 12);
-  await query('INSERT INTO admins (username, password_hash) VALUES ($1, $2)', [username, passwordHash]);
+  await query(
+    'INSERT INTO admins (username, password_hash, password_reset_version) VALUES ($1, $2, $3)',
+    [username, passwordHash, resetVersion || null],
+  );
   console.info(`[bootstrap] Admin "${username}" berhasil dibuat dari environment variable.`);
 }
 

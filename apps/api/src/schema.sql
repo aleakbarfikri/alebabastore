@@ -4,10 +4,13 @@ CREATE TABLE IF NOT EXISTS admins (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   username text UNIQUE NOT NULL,
   password_hash text NOT NULL,
+  password_reset_version text,
   role text NOT NULL DEFAULT 'admin' CHECK (role = 'admin'),
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
+
+ALTER TABLE admins ADD COLUMN IF NOT EXISTS password_reset_version text;
 
 CREATE TABLE IF NOT EXISTS admin_sessions (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
