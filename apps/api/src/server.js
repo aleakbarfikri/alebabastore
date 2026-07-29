@@ -228,8 +228,13 @@ async function fetchAccounts({ id, gameName, admin = false } = {}) {
     where.push(`NOT EXISTS (
       SELECT 1 FROM orders o
        WHERE o.game_account_id=g.id
-         AND o.status IN ('pending','awaiting_confirmation')
-         AND o.created_at > now() - interval '48 hours'
+         AND (
+           o.status='paid'
+           OR (
+             o.status IN ('pending','awaiting_confirmation')
+             AND o.created_at > now() - interval '48 hours'
+           )
+         )
     )`);
   }
   const result = await query(
@@ -376,6 +381,18 @@ app.patch('/api/accounts/:id', requireAdmin, upload.array('images', 10), async (
   const current = await query('SELECT * FROM game_accounts WHERE id=$1', [req.params.id]);
   if (!current.rowCount) return res.status(404).json({ error: 'Akun tidak ditemukan.' });
   const row = current.rows[0];
+  const requestedSold = req.body.sold === undefined ? row.sold : String(req.body.sold) === 'true';
+  if (!requestedSold && row.sold) {
+    const paidOrder = await query(
+      'SELECT 1 FROM orders WHERE game_account_id=$1 AND status=$2 LIMIT 1',
+      [req.params.id, 'paid'],
+    );
+    if (paidOrder.rowCount) {
+      return res.status(409).json({
+        error: 'Akun telah memiliki pembayaran lunas dan tidak dapat diaktifkan kembali.',
+      });
+    }
+  }
   const credentials = deliveryCredentials(req.body, false) || row.delivery_credentials;
   const client = await pool.connect();
   try {
@@ -388,7 +405,7 @@ app.patch('/api/accounts/:id', requireAdmin, upload.array('images', 10), async (
         Number(req.body.level || row.level), req.body.rank ?? row.rank, req.body.description ?? row.description,
         Number(req.body.price ?? row.price),
         req.body.townhall_level === undefined ? row.townhall_level : (req.body.townhall_level ? Number(req.body.townhall_level) : null),
-        credentials, req.body.sold === undefined ? row.sold : String(req.body.sold) === 'true',
+        credentials, requestedSold,
       ],
     );
     await saveImages(client, req.params.id, req.files, true);
@@ -498,13 +515,24 @@ app.post('/api/checkout', publicWriteLimiter, async (req, res) => {
       throw error;
     }
     const reserved = await client.query(
-      `SELECT 1 FROM orders WHERE game_account_id=$1
-        AND status IN ('pending','awaiting_confirmation','paid')
-        AND created_at > now() - interval '48 hours' LIMIT 1`,
+      `SELECT status FROM orders WHERE game_account_id=$1
+        AND (
+          status='paid'
+          OR (
+            status IN ('pending','awaiting_confirmation')
+            AND created_at > now() - interval '48 hours'
+          )
+        )
+        ORDER BY (status='paid') DESC
+        LIMIT 1`,
       [account.id],
     );
     if (reserved.rowCount) {
-      const error = new Error('Akun sedang dipesan pembeli lain. Coba lagi nanti.');
+      const error = new Error(
+        reserved.rows[0].status === 'paid'
+          ? 'Akun sudah terjual atau tidak tersedia.'
+          : 'Akun sedang dipesan pembeli lain. Coba lagi nanti.',
+      );
       error.status = 409;
       throw error;
     }
