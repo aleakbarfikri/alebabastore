@@ -1,17 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { Helmet } from 'react-helmet';
-import { useNavigate } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Upload, CheckCircle } from 'lucide-react';
+import { CheckCircle, LockKeyhole } from 'lucide-react';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
-import UploadZone from '@/components/UploadZone';
 import { useGameAccounts } from '@/hooks/useGameAccounts';
 import { useBuyerInquiries } from '@/hooks/useBuyerInquiries';
 import { toast } from 'sonner';
 
 const UploadProofPage = () => {
-  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { accounts, fetchAllAccounts } = useGameAccounts();
   const { submitInquiry, loading } = useBuyerInquiries();
 
@@ -19,10 +18,8 @@ const UploadProofPage = () => {
     buyer_name: '',
     buyer_email: '',
     buyer_phone: '',
-    game_account_id: ''
+    game_account_id: searchParams.get('account') || ''
   });
-  const [paymentProof, setPaymentProof] = useState([]);
-  const [additionalDocs, setAdditionalDocs] = useState([]);
 
   useEffect(() => {
     fetchAllAccounts();
@@ -44,36 +41,19 @@ const UploadProofPage = () => {
     }
 
     try {
-      await submitInquiry({
-        ...formData,
-        payment_proof: paymentProof,
-        additional_documents: additionalDocs
-      });
-
-      toast.success('Bukti pembayaran berhasil dikirim');
-      
-      setFormData({
-        buyer_name: '',
-        buyer_email: '',
-        buyer_phone: '',
-        game_account_id: ''
-      });
-      setPaymentProof([]);
-      setAdditionalDocs([]);
-
-      setTimeout(() => {
-        navigate('/');
-      }, 2000);
+      const checkout = await submitInquiry(formData);
+      toast.success('Link pembayaran berhasil dibuat');
+      window.location.assign(checkout.payment_url);
     } catch (error) {
-      toast.error('Gagal mengirim bukti pembayaran');
+      toast.error(error.message || 'Gagal membuat pembayaran');
     }
   };
 
   return (
     <>
       <Helmet>
-        <title>ALEBABA STORE - Jual Beli Game Account</title>
-        <meta name="description" content="Upload bukti pembayaran untuk pembelian akun game Anda di ALEBABA STORE. Proses verifikasi cepat dan aman." />
+        <title>Checkout Aman - ALEBABA STORE</title>
+        <meta name="description" content="Checkout QRIS aman untuk pembelian akun game di ALEBABA STORE." />
       </Helmet>
 
       <div className="min-h-screen bg-background">
@@ -86,10 +66,10 @@ const UploadProofPage = () => {
             className="mb-8"
           >
             <h1 className="text-4xl md:text-5xl font-bold text-foreground mb-4" style={{ letterSpacing: '-0.02em', textBalance: 'balance' }}>
-              Upload bukti pembayaran
+              Checkout pembayaran
             </h1>
             <p className="text-lg text-muted-foreground">
-              Kirimkan bukti pembayaran Anda untuk verifikasi pembelian akun game
+              Isi email aktif. Detail akun akan dikirim otomatis setelah pembayaran dikonfirmasi.
             </p>
           </motion.div>
 
@@ -169,27 +149,11 @@ const UploadProofPage = () => {
                 </select>
               </div>
 
-              <div>
-                <label className="block text-sm font-semibold text-foreground mb-2">
-                  Bukti Pembayaran
-                </label>
-                <UploadZone
-                  onFilesChange={setPaymentProof}
-                  maxFiles={5}
-                  accept="image/*"
-                  label="Upload bukti transfer"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-foreground mb-2">
-                  Dokumen Tambahan (Opsional)
-                </label>
-                <UploadZone
-                  onFilesChange={setAdditionalDocs}
-                  maxFiles={10}
-                  label="Upload dokumen pendukung"
-                />
+              <div className="flex items-start gap-3 rounded-xl border border-primary/20 bg-primary/5 p-4">
+                <LockKeyhole className="w-5 h-5 text-primary mt-0.5 shrink-0" />
+                <p className="text-sm text-muted-foreground">
+                  Email wajib aktif. Kredensial produk hanya dikirim setelah webhook pembayaran TemanQRIS terverifikasi.
+                </p>
               </div>
 
               <button
@@ -200,12 +164,12 @@ const UploadProofPage = () => {
                 {loading ? (
                   <>
                     <div className="w-5 h-5 border-2 border-primary-foreground border-t-transparent rounded-full animate-spin"></div>
-                    Mengirim...
+                    Membuat pembayaran...
                   </>
                 ) : (
                   <>
                     <CheckCircle className="w-5 h-5" />
-                    Kirim Bukti Pembayaran
+                    Lanjut Bayar dengan QRIS
                   </>
                 )}
               </button>

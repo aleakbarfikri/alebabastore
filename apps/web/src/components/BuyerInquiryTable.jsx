@@ -1,9 +1,8 @@
 import React from 'react';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Copy } from 'lucide-react';
+import { Copy, CheckCircle2, Send } from 'lucide-react';
 import { toast } from 'sonner';
 
-const BuyerInquiryTable = ({ inquiries, onStatusChange }) => {
+const BuyerInquiryTable = ({ inquiries, onVerify, onResend }) => {
   const copyToClipboard = (text) => {
     navigator.clipboard.writeText(text);
     toast.success(`Copied code: ${text}`);
@@ -25,7 +24,7 @@ const BuyerInquiryTable = ({ inquiries, onStatusChange }) => {
             <th scope="col" className="px-6 py-4">Date</th>
             <th scope="col" className="px-6 py-4">Buyer Info</th>
             <th scope="col" className="px-6 py-4">Account Code</th>
-            <th scope="col" className="px-6 py-4">Status</th>
+            <th scope="col" className="px-6 py-4">Pembayaran & Pengiriman</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-border">
@@ -63,19 +62,25 @@ const BuyerInquiryTable = ({ inquiries, onStatusChange }) => {
                   )}
                 </td>
                 <td className="px-6 py-4">
-                  <Select
-                    value={inquiry.status}
-                    onValueChange={(value) => onStatusChange(inquiry.id, value)}
-                  >
-                    <SelectTrigger className="w-[140px] h-8 text-xs bg-background border-border">
-                      <SelectValue placeholder="Status" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="pending">Pending</SelectItem>
-                      <SelectItem value="contacted">Contacted</SelectItem>
-                      <SelectItem value="completed">Completed</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <div className="flex items-center gap-2">
+                    <span className={`px-3 py-1.5 rounded-full text-xs font-semibold ${
+                      inquiry.status === 'paid' ? 'bg-emerald-500/10 text-emerald-600' :
+                      inquiry.status === 'awaiting_confirmation' ? 'bg-amber-500/10 text-amber-600' :
+                      'bg-muted text-muted-foreground'
+                    }`}>{inquiry.status}</span>
+                    {inquiry.status === 'awaiting_confirmation' && (
+                      <button onClick={() => onVerify(inquiry.order_id)} className="p-2 rounded-lg bg-emerald-500/10 text-emerald-600" title="Verifikasi pembayaran">
+                        <CheckCircle2 className="w-4 h-4" />
+                      </button>
+                    )}
+                    {inquiry.status === 'paid' && inquiry.delivery_error && (
+                      <button onClick={() => onResend(inquiry.order_id)} className="p-2 rounded-lg bg-primary/10 text-primary" title="Kirim ulang email">
+                        <Send className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                  {inquiry.fulfilled_at && <div className="text-xs text-emerald-600 mt-1">Email terkirim</div>}
+                  {inquiry.delivery_error && <div className="text-xs text-destructive mt-1 max-w-[240px] whitespace-normal">{inquiry.delivery_error}</div>}
                 </td>
               </tr>
             );

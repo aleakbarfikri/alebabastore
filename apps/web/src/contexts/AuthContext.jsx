@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import pb from '@/lib/pocketbaseClient';
+import { api } from '@/lib/apiClient';
 import { toast } from 'sonner';
 
 const AuthContext = createContext(null);
@@ -9,37 +9,22 @@ export const AuthProvider = ({ children }) => {
   const [initialLoading, setInitialLoading] = useState(true);
 
   useEffect(() => {
-    try {
-      if (pb.authStore.isValid && pb.authStore.model) {
-        setCurrentUser(pb.authStore.model);
-      }
-    } catch (error) {
-      console.error('[AuthContext] Initial auth check failed:', error);
-      pb.authStore.clear();
-    } finally {
-      setInitialLoading(false);
-    }
-
-    const unsubscribe = pb.authStore.onChange((token, model) => {
-      if (model) {
-        setCurrentUser(model);
-      } else {
-        setCurrentUser(null);
-      }
-    });
-
-    return () => {
-      unsubscribe();
-    };
+    api('/auth/me')
+      .then(({ user }) => setCurrentUser(user))
+      .catch(() => setCurrentUser(null))
+      .finally(() => setInitialLoading(false));
   }, []);
 
-  const adminLogin = useCallback(async (email, password) => {
+  const adminLogin = useCallback(async (username, password) => {
     try {
-      if (!email || !password) {
-        throw new Error('Email and password are required.');
+      if (!username || !password) {
+        throw new Error('Username dan password wajib diisi.');
       }
-      const authData = await pb.collection('users').authWithPassword(email, password, { $autoCancel: false });
-      setCurrentUser(authData.record);
+      const authData = await api('/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ username, password }),
+      });
+      setCurrentUser(authData.user);
       return authData;
     } catch (error) {
       console.error('[AuthContext] Login failed:', error);
@@ -47,9 +32,9 @@ export const AuthProvider = ({ children }) => {
     }
   }, []);
 
-  const adminLogout = useCallback(() => {
+  const adminLogout = useCallback(async () => {
     try {
-      pb.authStore.clear();
+      await api('/auth/logout', { method: 'POST' });
       setCurrentUser(null);
       toast.success('Logged out successfully');
     } catch (error) {
@@ -64,7 +49,7 @@ export const AuthProvider = ({ children }) => {
     return currentUser?.role === 'admin';
   }, [currentUser]);
 
-  const isAuthenticated = pb.authStore.isValid && currentUser !== null;
+  const isAuthenticated = currentUser !== null;
 
   return (
     <AuthContext.Provider 

@@ -11,6 +11,7 @@ import AccountDetailPage from '@/pages/AccountDetailPage';
 import UploadProofPage from '@/pages/UploadProofPage';
 import AdminLoginPage from '@/pages/AdminLoginPage';
 import AdminDashboard from '@/pages/AdminDashboard';
+import PaymentStatusPage from '@/pages/PaymentStatusPage';
 
 function App() {
   return (
@@ -24,6 +25,7 @@ function App() {
             <Route path="/listings" element={<GameListingPage />} />
             <Route path="/account/:id" element={<AccountDetailPage />} />
             <Route path="/upload" element={<UploadProofPage />} />
+            <Route path="/payment-status" element={<PaymentStatusPage />} />
             
             {/* Unprotected Admin Login route */}
             <Route path="/admin-login" element={<AdminLoginPage />} />

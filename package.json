@@ -3,9 +3,11 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "dev": "concurrently --kill-others --raw \"npm run dev --prefix apps/web\" \"npm run dev --prefix apps/pocketbase\"",
+    "dev": "concurrently --kill-others --raw \"npm run dev --prefix apps/web\" \"npm run dev --prefix apps/api\"",
     "build": "concurrently --raw \"npm run build --prefix apps/web\"",
-    "start": "concurrently --kill-others --raw \"npm run start --prefix apps/pocketbase\"",
+    "start": "npm run start --prefix apps/api",
+    "db:init": "npm run db:init --prefix apps/api",
+    "db:migrate:pocketbase": "npm run db:migrate:pocketbase --prefix apps/api",
     "lint": "concurrently --raw \"npm run lint --prefix apps/web\""
   },
   "devDependencies": {

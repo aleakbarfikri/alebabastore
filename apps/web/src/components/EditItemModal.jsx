@@ -22,9 +22,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import UploadZone from '@/components/UploadZone.jsx';
-import pb from '@/lib/pocketbaseClient.js';
 import { toast } from 'sonner';
 import { useGameAccounts } from '@/hooks/useGameAccounts.js';
+import { api } from '@/lib/apiClient.js';
 
 export default function EditItemModal({ isOpen, onClose, account, onSuccess }) {
   const { deleteAccount } = useGameAccounts();
@@ -36,7 +36,10 @@ export default function EditItemModal({ isOpen, onClose, account, onSuccess }) {
     description: '',
     price: '',
     townhall_level: '',
-    account_code: ''
+    account_code: '',
+    credential_email: '',
+    credential_password: '',
+    backup_codes: ''
   });
   const [images, setImages] = useState([]);
   const [submitting, setSubmitting] = useState(false);
@@ -55,7 +58,10 @@ export default function EditItemModal({ isOpen, onClose, account, onSuccess }) {
         description: account.description || '',
         price: account.price?.toString() || '',
         townhall_level: account.townhall_level?.toString() || '',
-        account_code: account.account_code || ''
+        account_code: account.account_code || '',
+        credential_email: '',
+        credential_password: '',
+        backup_codes: ''
       });
       setImages([]);
       setShowDeleteConfirm(false);
@@ -114,10 +120,15 @@ export default function EditItemModal({ isOpen, onClose, account, onSuccess }) {
           data.append('images', images[i]);
         }
       }
+      if (formData.credential_email || formData.credential_password || formData.backup_codes) {
+        data.append('credential_email', formData.credential_email);
+        data.append('credential_password', formData.credential_password);
+        data.append('backup_codes', formData.backup_codes);
+      }
 
       console.log('[EditItemModal] Submitting update payload with keys:', Array.from(data.keys()));
 
-      await pb.collection('game_accounts').update(account.id, data, { $autoCancel: false });
+      await api(`/accounts/${encodeURIComponent(account.id)}`, { method: 'PATCH', body: data });
       toast.success('Account successfully updated');
       onSuccess();
       onClose();
@@ -296,6 +307,17 @@ export default function EditItemModal({ isOpen, onClose, account, onSuccess }) {
                 accept="image/*"
                 label="Upload new proof screenshots to replace existing ones"
               />
+            </div>
+
+            <div className="space-y-3 border border-primary/20 bg-primary/5 rounded-xl p-4">
+              <Label>Ganti data pengiriman (opsional)</Label>
+              <p className="text-xs text-muted-foreground">
+                {account?.credentials_configured ? 'Kredensial sudah tersimpan. Kosongkan semua field untuk mempertahankannya.' : 'Kredensial belum diisi.'}
+              </p>
+              <Input type="email" name="credential_email" value={formData.credential_email} onChange={handleInputChange} placeholder="Email akun Gmail" />
+              <Input type="password" name="credential_password" value={formData.credential_password} onChange={handleInputChange} placeholder="Password akun Gmail" />
+              <Textarea name="backup_codes" value={formData.backup_codes} onChange={handleInputChange} rows={5}
+                placeholder="Tepat 8 kode cadangan Gmail, satu kode per baris" />
             </div>
 
             <div className="flex justify-between items-center w-full pt-4 border-t border-border">
