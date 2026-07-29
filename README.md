@@ -1,7 +1,7 @@
 # AlebabaStore
 
 Aplikasi toko akun game dengan backend Node.js, database PostgreSQL Neon, checkout
-TemanQRIS, pengiriman produk melalui email, dan dashboard admin.
+QRIS Pakasir/TemanQRIS, pengiriman produk melalui email, dan dashboard admin.
 
 ## Pemisahan database Neon
 
@@ -19,8 +19,9 @@ mencegah database tertukar saat deployment.
 4. Development: `npm run dev`. Production: `npm run build && npm start`.
 5. Login admin dengan username `alebabastore` dan password awal yang disimpan
    sebagai secret deployment.
-6. Di dashboard admin, isi API key serta webhook secret TemanQRIS dan konfigurasi
-   SMTP. Nilai rahasia dienkripsi dan tidak ditampilkan kembali.
+6. Di dashboard admin, pilih provider pembayaran. Untuk pembayaran otomatis,
+   pilih Pakasir lalu isi project slug dan API key. Isi juga konfigurasi SMTP.
+   Nilai rahasia dienkripsi dan tidak ditampilkan kembali.
 
 ### Deployment Vercel
 
@@ -41,7 +42,13 @@ Untuk mengimpor akun dan review dari backup PocketBase lama, set
 lama wajib diedit untuk menambahkan kredensial pengiriman terenkripsi sebelum
 dapat dibeli.
 
-Endpoint webhook yang didaftarkan otomatis pada payment link:
+Untuk Pakasir, atur Webhook URL proyek melalui form Edit Proyek:
+
+`https://DOMAIN-ANDA/api/webhooks/pakasir`
+
+Webhook Pakasir selalu diverifikasi ulang ke Transaction Detail API. Order hanya
+dianggap lunas jika project, order ID, nominal, metode QRIS, dan status
+`completed` semuanya cocok. Untuk transaksi TemanQRIS lama, endpoint webhook-nya:
 
 `https://DOMAIN-ANDA/api/webhooks/temanqris`
 
@@ -53,7 +60,7 @@ sebagai pembayaran berhasil.
 
 Gambar upload dibatasi 10 MB, dinormalisasi, dan dikompres menjadi WebP dengan
 resolusi maksimal 1600×1600. Thumbnail terpisah dibuat untuk halaman daftar.
-Kredensial produk, API key TemanQRIS, webhook secret, dan password SMTP dienkripsi
-dengan AES-256-GCM menggunakan `APP_ENCRYPTION_KEY`.
+Kredensial produk, API key Pakasir/TemanQRIS, webhook secret, dan password SMTP
+dienkripsi dengan AES-256-GCM menggunakan `APP_ENCRYPTION_KEY`.
 
 Jangan commit file `.env`, database lokal, API key, password, atau backup code.

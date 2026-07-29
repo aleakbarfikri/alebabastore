@@ -1,7 +1,7 @@
 import { query } from './db.js';
 import { decrypt, encrypt } from './crypto.js';
 
-const SECRET_FIELDS = ['temanqris_api_key', 'temanqris_webhook_secret', 'smtp_user', 'smtp_password'];
+const SECRET_FIELDS = ['temanqris_api_key', 'temanqris_webhook_secret', 'pakasir_api_key', 'smtp_user', 'smtp_password'];
 
 export async function getSettings({ reveal = false } = {}) {
   const result = await query('SELECT * FROM app_settings WHERE id = 1');
@@ -14,8 +14,11 @@ export async function getSettings({ reveal = false } = {}) {
 
 export function publicSettings(settings) {
   return {
+    payment_provider: settings.payment_provider || 'temanqris',
     temanqris_api_key_configured: Boolean(settings.temanqris_api_key),
     temanqris_webhook_secret_configured: Boolean(settings.temanqris_webhook_secret),
+    pakasir_project_slug: settings.pakasir_project_slug || '',
+    pakasir_api_key_configured: Boolean(settings.pakasir_api_key),
     smtp_host: settings.smtp_host || '',
     smtp_port: settings.smtp_port || 587,
     smtp_secure: Boolean(settings.smtp_secure),
@@ -34,15 +37,28 @@ export async function updateSettings(input) {
     }
     return input[field] === undefined ? current[field] : input[field];
   };
+  const paymentProvider = ['temanqris', 'pakasir'].includes(value('payment_provider'))
+    ? value('payment_provider')
+    : 'temanqris';
+  const pakasirProjectSlug = String(value('pakasir_project_slug') || '').trim().toLowerCase();
+  const pakasirApiKey = value('pakasir_api_key');
+  if (paymentProvider === 'pakasir' && (!pakasirProjectSlug || !pakasirApiKey)) {
+    const error = new Error('Project slug dan API key Pakasir wajib diisi sebelum Pakasir diaktifkan.');
+    error.status = 400;
+    throw error;
+  }
   await query(
     `UPDATE app_settings SET
-       temanqris_api_key=$1, temanqris_webhook_secret=$2, smtp_host=$3, smtp_port=$4,
-       smtp_secure=$5, smtp_user=$6, smtp_password=$7, smtp_from=$8, updated_at=now()
-     WHERE id=1`,
+       payment_provider=$1, temanqris_api_key=$2, temanqris_webhook_secret=$3,
+       pakasir_project_slug=$4, pakasir_api_key=$5, smtp_host=$6, smtp_port=$7,
+       smtp_secure=$8, smtp_user=$9, smtp_password=$10, smtp_from=$11, updated_at=now()
+    WHERE id=1`,
     [
-      value('temanqris_api_key'), value('temanqris_webhook_secret'), value('smtp_host'),
-      Number(value('smtp_port') || 587), Boolean(value('smtp_secure')), value('smtp_user'),
-      value('smtp_password'), value('smtp_from'),
+      paymentProvider,
+      value('temanqris_api_key'), value('temanqris_webhook_secret'),
+      pakasirProjectSlug, pakasirApiKey,
+      value('smtp_host'), Number(value('smtp_port') || 587), Boolean(value('smtp_secure')),
+      value('smtp_user'), value('smtp_password'), value('smtp_from'),
     ],
   );
   return publicSettings(await getSettings());

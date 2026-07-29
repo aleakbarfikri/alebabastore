@@ -73,7 +73,7 @@ const BuyerInquiryTable = ({ inquiries, onVerify, onSync, onResend }) => {
                         <RefreshCw className="w-4 h-4" />
                       </button>
                     )}
-                    {inquiry.status === 'awaiting_confirmation' && (
+                    {inquiry.status === 'awaiting_confirmation' && inquiry.payment_provider !== 'pakasir' && (
                       <button onClick={() => onVerify(inquiry.order_id)} className="p-2 rounded-lg bg-emerald-500/10 text-emerald-600" title="Verifikasi pembayaran">
                         <CheckCircle2 className="w-4 h-4" />
                       </button>
