@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import { KeyRound } from 'lucide-react';
 import { toast } from 'sonner';
-import pb from '@/lib/pocketbaseClient.js';
+import { api } from '@/lib/apiClient.js';
+import { useAuth } from '@/contexts/AuthContext.jsx';
 
 const AdminPasswordChangeCard = () => {
+  const { adminLogout } = useAuth();
   const [passwordForm, setPasswordForm] = useState({
     currentPassword: '',
     newPassword: '',
@@ -23,20 +25,13 @@ const AdminPasswordChangeCard = () => {
     event.preventDefault();
 
     const { currentPassword, newPassword, confirmPassword } = passwordForm;
-    const adminUser = pb.authStore.model;
-
-    if (!adminUser?.id) {
-      toast.error('Sesi admin tidak ditemukan. Silakan login ulang.');
-      return;
-    }
-
     if (!currentPassword || !newPassword || !confirmPassword) {
       toast.error('Semua field password wajib diisi.');
       return;
     }
 
-    if (newPassword.length < 8) {
-      toast.error('Password baru minimal 8 karakter.');
+    if (newPassword.length < 10) {
+      toast.error('Password baru minimal 10 karakter.');
       return;
     }
 
@@ -48,15 +43,13 @@ const AdminPasswordChangeCard = () => {
     setIsChangingPassword(true);
 
     try {
-      await pb.collection('users').update(
-        adminUser.id,
-        {
-          oldPassword: currentPassword,
-          password: newPassword,
-          passwordConfirm: confirmPassword,
-        },
-        { $autoCancel: false }
-      );
+      await api('/auth/change-password', {
+        method: 'POST',
+        body: JSON.stringify({
+          current_password: currentPassword,
+          new_password: newPassword,
+        }),
+      });
 
       toast.success('Password admin berhasil diubah. Silakan login ulang.');
 
@@ -67,7 +60,7 @@ const AdminPasswordChangeCard = () => {
       });
 
       setTimeout(() => {
-        pb.authStore.clear();
+        adminLogout();
         window.location.href = '/admin-login';
       }, 900);
     } catch (error) {
@@ -120,7 +113,7 @@ const AdminPasswordChangeCard = () => {
               onChange={handlePasswordInputChange}
               autoComplete="new-password"
               className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground outline-none focus:ring-2 focus:ring-primary/30"
-              placeholder="Minimal 8 karakter"
+              placeholder="Minimal 10 karakter"
             />
           </div>
 

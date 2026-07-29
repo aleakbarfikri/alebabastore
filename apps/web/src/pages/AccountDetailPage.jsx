@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { Helmet } from 'react-helmet';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowLeft, MessageCircle, TrendingUp, Shield, Zap, Castle, Copy, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, CreditCard, TrendingUp, Shield, Zap, Castle, Copy, AlertTriangle } from 'lucide-react';
 import Header from '@/components/Header.jsx';
 import Footer from '@/components/Footer.jsx';
 import AccountImageGallery from '@/components/AccountImageGallery.jsx';
@@ -12,6 +12,7 @@ import { toast } from 'sonner';
 
 const AccountDetailPage = () => {
   const { id } = useParams();
+  const navigate = useNavigate();
   const { fetchAccountById } = useGameAccounts();
   const [account, setAccount] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -49,15 +50,6 @@ const AccountDetailPage = () => {
       currency: 'IDR',
       minimumFractionDigits: 0
     }).format(price);
-  };
-
-  const handleWhatsAppContact = () => {
-    if (!account) return;
-    const codeText = account.account_code ? ` (Kode: ${account.account_code})` : '';
-    const message = encodeURIComponent(
-      `Halo, saya tertarik dengan akun ${account.game_name} Level ${account.level}${codeText} seharga ${formatPrice(account.price)}. Apakah masih tersedia?`
-    );
-    window.open(`https://wa.me/6285129292922?text=${message}`, '_blank');
   };
 
   const copyCode = () => {
@@ -193,7 +185,7 @@ const AccountDetailPage = () => {
                 </div>
 
                 <button
-                  onClick={handleWhatsAppContact}
+                  onClick={() => navigate(`/upload?account=${encodeURIComponent(account.id)}`)}
                   disabled={account.sold}
                   className={`w-full px-8 py-4 rounded-xl font-semibold transition-all flex items-center justify-center gap-3 mb-4 ${
                     account.sold 
@@ -201,8 +193,8 @@ const AccountDetailPage = () => {
                       : 'bg-secondary text-secondary-foreground hover:bg-secondary/90 gaming-glow-secondary active:scale-[0.98]'
                   }`}
                 >
-                  <MessageCircle className="w-5 h-5" />
-                  {account.sold ? 'Akun Telah Terjual' : 'Hubungi via WhatsApp'}
+                  <CreditCard className="w-5 h-5" />
+                  {account.sold ? 'Akun Telah Terjual' : 'Beli dengan QRIS'}
                 </button>
 
                 <div className="grid grid-cols-2 gap-4">

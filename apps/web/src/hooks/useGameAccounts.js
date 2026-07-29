@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import pb from '@/lib/pocketbaseClient';
+import { api } from '@/lib/apiClient';
 import { toast } from 'sonner';
 
 export const useGameAccounts = () => {
@@ -11,14 +11,7 @@ export const useGameAccounts = () => {
     setLoading(true);
     setError(null);
     try {
-      const options = { 
-        sort: '-created',
-        $autoCancel: false 
-      };
-      if (filter) {
-        options.filter = `game_name = "${filter}"`;
-      }
-      const records = await pb.collection('game_accounts').getFullList(options);
+      const records = await api(`/accounts${filter ? `?game_name=${encodeURIComponent(filter)}` : ''}`);
       setAccounts(records);
       return records;
     } catch (err) {
@@ -37,7 +30,7 @@ export const useGameAccounts = () => {
     setError(null);
     try {
       if (!id) throw new Error('Account ID is required.');
-      const record = await pb.collection('game_accounts').getOne(id, { $autoCancel: false });
+      const record = await api(`/accounts/${encodeURIComponent(id)}`);
       return record;
     } catch (err) {
       console.error(`[useGameAccounts] fetchAccountById error for ID ${id}:`, err);
@@ -70,7 +63,7 @@ export const useGameAccounts = () => {
         }
       }
 
-      const record = await pb.collection('game_accounts').create(formData, { $autoCancel: false });
+      const record = await api('/accounts', { method: 'POST', body: formData });
       await fetchAllAccounts();
       return record;
     } catch (err) {
@@ -104,7 +97,7 @@ export const useGameAccounts = () => {
         }
       }
 
-      const record = await pb.collection('game_accounts').update(id, formData, { $autoCancel: false });
+      const record = await api(`/accounts/${encodeURIComponent(id)}`, { method: 'PATCH', body: formData });
       await fetchAllAccounts();
       return record;
     } catch (err) {
@@ -124,7 +117,7 @@ export const useGameAccounts = () => {
       if (!id || typeof id !== 'string' || id.trim() === '') {
         throw new Error("Invalid record ID provided for deletion.");
       }
-      await pb.collection('game_accounts').delete(id, { $autoCancel: false });
+      await api(`/accounts/${encodeURIComponent(id)}`, { method: 'DELETE' });
       await fetchAllAccounts();
       return true;
     } catch (err) {

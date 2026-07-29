@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import pb from '@/lib/pocketbaseClient';
+import { api } from '@/lib/apiClient';
 import { toast } from 'sonner';
 
 export const useBuyerInquiries = () => {
@@ -11,26 +11,10 @@ export const useBuyerInquiries = () => {
     setLoading(true);
     setError(null);
     try {
-      const formData = new FormData();
-      formData.append('buyer_name', data.buyer_name);
-      formData.append('buyer_email', data.buyer_email);
-      formData.append('buyer_phone', data.buyer_phone);
-      formData.append('game_account_id', data.game_account_id);
-      formData.append('status', 'pending');
-      
-      if (data.payment_proof && data.payment_proof.length > 0) {
-        for (let i = 0; i < data.payment_proof.length; i++) {
-          formData.append('payment_proof', data.payment_proof[i]);
-        }
-      }
-      
-      if (data.additional_documents && data.additional_documents.length > 0) {
-        for (let i = 0; i < data.additional_documents.length; i++) {
-          formData.append('additional_documents', data.additional_documents[i]);
-        }
-      }
-
-      const record = await pb.collection('buyer_inquiries').create(formData, { $autoCancel: false });
+      const record = await api('/checkout', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      });
       return record;
     } catch (err) {
       console.error('[useBuyerInquiries] submitInquiry error:', err);
@@ -46,11 +30,16 @@ export const useBuyerInquiries = () => {
     setLoading(true);
     setError(null);
     try {
-      const records = await pb.collection('buyer_inquiries').getFullList({
-        sort: '-created',
-        expand: 'game_account_id',
-        $autoCancel: false
-      });
+      const orders = await api('/admin/orders');
+      const records = orders.map((order) => ({
+        ...order,
+        id: order.id,
+        buyer_email: order.buyer_email,
+        buyer_name: order.buyer_name,
+        buyer_phone: order.buyer_phone,
+        created: order.created_at,
+        expand: { game_account_id: { account_code: order.account_code } },
+      }));
       setInquiries(records);
       return records;
     } catch (err) {
@@ -69,9 +58,8 @@ export const useBuyerInquiries = () => {
     setError(null);
     try {
       if (!id) throw new Error('Inquiry ID is required.');
-      const record = await pb.collection('buyer_inquiries').update(id, { status }, { $autoCancel: false });
-      await fetchInquiries();
-      return record;
+      if (status !== 'paid') throw new Error('Status pembayaran hanya dapat berubah melalui TemanQRIS.');
+      return true;
     } catch (err) {
       console.error(`[useBuyerInquiries] updateInquiryStatus error for ID ${id}:`, err);
       const errorMessage = err.message || 'Failed to update inquiry status.';

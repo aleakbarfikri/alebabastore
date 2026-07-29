@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import pb from '@/lib/pocketbaseClient';
+import { imageUrl } from '@/lib/apiClient';
 import { X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -30,7 +30,7 @@ const AccountImageGallery = ({ account }) => {
     <>
       <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
         {account.images.map((image, index) => {
-          const imageUrl = pb.files.getURL(account, image, { thumb: '300x300' });
+          const thumbnailUrl = imageUrl(image, true);
           return (
             <motion.div
               key={index}
@@ -41,7 +41,7 @@ const AccountImageGallery = ({ account }) => {
               onClick={() => openLightbox(index)}
             >
               <img
-                src={imageUrl}
+                src={thumbnailUrl}
                 alt={`Screenshot ${index + 1}`}
                 className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
               />
@@ -96,7 +96,7 @@ const AccountImageGallery = ({ account }) => {
               initial={{ scale: 0.8, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.8, opacity: 0 }}
-              src={pb.files.getURL(account, account.images[selectedIndex])}
+              src={imageUrl(account.images[selectedIndex])}
               alt={`Screenshot ${selectedIndex + 1}`}
               className="max-w-full max-h-full object-contain"
               onClick={(e) => e.stopPropagation()}

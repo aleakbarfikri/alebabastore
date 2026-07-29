@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { RefreshCcw, StarHalf } from 'lucide-react';
-import pb from '@/lib/pocketbaseClient.js';
+import { api } from '@/lib/apiClient.js';
 import ReviewForm from './ReviewForm.jsx';
 import ReviewCard from './ReviewCard.jsx';
 import { toast } from 'sonner';
@@ -15,15 +15,8 @@ const ReviewSection = ({ gameAccountId }) => {
     try {
       setLoading(true);
       setError(null);
-      const sortQuery = sortBy === 'highest' ? '-rating,-created' : '-created';
-      
-      const result = await pb.collection('reviews').getList(1, 100, {
-        filter: `gameAccountId="${gameAccountId}"`,
-        sort: sortQuery,
-        $autoCancel: false
-      });
-      
-      setReviews(result.items);
+      const result = await api(`/accounts/${encodeURIComponent(gameAccountId)}/reviews?sort=${sortBy}`);
+      setReviews(result);
     } catch (err) {
       console.error('Failed to fetch reviews:', err);
       setError('Failed to load reviews. Please try again.');
@@ -40,7 +33,7 @@ const ReviewSection = ({ gameAccountId }) => {
 
   const handleDeleteReview = async (id) => {
     try {
-      await pb.collection('reviews').delete(id, { $autoCancel: false });
+      await api(`/reviews/${encodeURIComponent(id)}`, { method: 'DELETE' });
       toast.success('Review deleted');
       fetchReviews();
     } catch (err) {

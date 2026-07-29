@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Star, Send } from 'lucide-react';
 import { toast } from 'sonner';
-import pb from '@/lib/pocketbaseClient.js';
+import { api } from '@/lib/apiClient.js';
 
 const ReviewForm = ({ gameAccountId, onSuccess }) => {
   const [rating, setRating] = useState(0);
@@ -25,12 +25,14 @@ const ReviewForm = ({ gameAccountId, onSuccess }) => {
     setIsSubmitting(true);
 
     try {
-      await pb.collection('reviews').create({
-        gameAccountId,
-        rating,
-        comment: comment.trim(),
-        customerName: customerName.trim() || 'Anonymous'
-      }, { $autoCancel: false });
+      await api(`/accounts/${encodeURIComponent(gameAccountId)}/reviews`, {
+        method: 'POST',
+        body: JSON.stringify({
+          rating,
+          comment: comment.trim(),
+          customerName: customerName.trim() || 'Anonymous'
+        }),
+      });
       
       toast.success('Review submitted successfully!');
       

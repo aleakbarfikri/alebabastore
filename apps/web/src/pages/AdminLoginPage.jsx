@@ -5,13 +5,12 @@ import { motion } from 'framer-motion';
 import { Shield, LogIn, AlertCircle } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
-import pb from '@/lib/pocketbaseClient';
 
 const AdminLoginPage = () => {
   const navigate = useNavigate();
   const { adminLogin } = useAuth();
   const [formData, setFormData] = useState({
-    email: '',
+    username: 'alebabastore',
     password: ''
   });
   const [loading, setLoading] = useState(false);
@@ -28,8 +27,8 @@ const AdminLoginPage = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    if (!formData.email || !formData.password) {
-      setError('Please enter both email and password.');
+    if (!formData.username || !formData.password) {
+      setError('Masukkan username dan password.');
       return;
     }
 
@@ -37,11 +36,10 @@ const AdminLoginPage = () => {
     setError(null);
 
     try {
-      const authData = await adminLogin(formData.email, formData.password);
+      const authData = await adminLogin(formData.username, formData.password);
       
-      if (authData.record.role !== 'admin') {
-        setError('Access Denied. Admin privileges required.');
-        pb.authStore.clear(); 
+      if (authData.user.role !== 'admin') {
+        setError('Akses ditolak.');
         setLoading(false);
         return;
       }
@@ -90,19 +88,20 @@ const AdminLoginPage = () => {
 
             <form onSubmit={handleSubmit} className="space-y-5">
               <div>
-                <label htmlFor="email" className="block text-sm font-semibold text-foreground mb-2">
-                  Admin Email
+                <label htmlFor="username" className="block text-sm font-semibold text-foreground mb-2">
+                  Username Admin
                 </label>
                 <input
-                  type="email"
-                  id="email"
-                  name="email"
-                  value={formData.email}
+                  type="text"
+                  id="username"
+                  name="username"
+                  value={formData.username}
                   onChange={handleInputChange}
                   required
                   disabled={loading}
                   className="w-full px-4 py-3.5 bg-background border border-border rounded-xl text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                  placeholder="Enter authorized email"
+                  autoComplete="username"
+                  placeholder="alebabastore"
                 />
               </div>
 

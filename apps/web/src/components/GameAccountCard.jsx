@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import pb from '@/lib/pocketbaseClient.js';
+import { imageUrl } from '@/lib/apiClient.js';
 import { Gamepad2, TrendingUp, Trash2, Edit, Tag, Castle, Copy } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext.jsx';
@@ -16,7 +16,7 @@ const GameAccountCard = ({ account, onDelete, onEdit, onToggleSold }) => {
   const { isAdmin } = useAuth();
   
   const thumbnailUrl = account.images && account.images.length > 0
-    ? pb.files.getURL(account, account.images[0], { thumb: '300x300' })
+    ? imageUrl(account.images[0], true)
     : null;
 
   const formatPrice = (price) => {

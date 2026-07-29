@@ -9,6 +9,7 @@ import BuyerInquiryTable from '@/components/BuyerInquiryTable.jsx';
 import GameAccountCard from '@/components/GameAccountCard.jsx';
 import StatisticsCard from '@/components/StatisticsCard.jsx'; import AdminPasswordChangeCard from '@/components/AdminPasswordChangeCard.jsx';
 import EditItemModal from '@/components/EditItemModal.jsx';
+import PaymentSettingsCard from '@/components/PaymentSettingsCard.jsx';
 import { useGameAccounts } from '@/hooks/useGameAccounts.js';
 import { useBuyerInquiries } from '@/hooks/useBuyerInquiries.js';
 import { useAuth } from '@/contexts/AuthContext.jsx';
@@ -23,7 +24,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import pb from '@/lib/pocketbaseClient.js';
+import { api } from '@/lib/apiClient.js';
 import { toast } from 'sonner';
 import { generateUniqueCode } from '@/lib/generateUniqueCode.js';
 
@@ -31,7 +32,7 @@ const AdminDashboard = () => {
   const { getCurrentUser } = useAuth();
   const adminUser = getCurrentUser();
   const { accounts, fetchAllAccounts, createAccount, deleteAccount } = useGameAccounts();
-  const { inquiries, fetchInquiries, updateInquiryStatus } = useBuyerInquiries();
+  const { inquiries, fetchInquiries } = useBuyerInquiries();
 
   const [showAddForm, setShowAddForm] = useState(false);
   const [showSoldItems, setShowSoldItems] = useState(true);
@@ -51,7 +52,10 @@ const AdminDashboard = () => {
     rank: '',
     description: '',
     price: '',
-    townhall_level: ''
+    townhall_level: '',
+    credential_email: '',
+    credential_password: '',
+    backup_codes: ''
   });
   const [images, setImages] = useState([]);
   const [submitting, setSubmitting] = useState(false);
@@ -96,6 +100,9 @@ const AdminDashboard = () => {
         description: formData.description,
         price: parseFloat(formData.price),
         account_code: accountCode,
+        credential_email: formData.credential_email,
+        credential_password: formData.credential_password,
+        backup_codes: formData.backup_codes,
       };
       
       if (formData.title) {
@@ -122,7 +129,10 @@ const AdminDashboard = () => {
         rank: '',
         description: '',
         price: '',
-        townhall_level: ''
+        townhall_level: '',
+        credential_email: '',
+        credential_password: '',
+        backup_codes: ''
       });
       setImages([]);
       setShowAddForm(false);
@@ -169,7 +179,14 @@ const AdminDashboard = () => {
   const handleToggleSold = async (account) => {
     try {
       const newSoldStatus = !account.sold;
-      await pb.collection('game_accounts').update(account.id, { sold: newSoldStatus }, { $autoCancel: false });
+      await api(`/accounts/${encodeURIComponent(account.id)}`, {
+        method: 'PATCH',
+        body: (() => {
+          const data = new FormData();
+          data.append('sold', String(newSoldStatus));
+          return data;
+        })(),
+      });
       toast.success(`Account marked as ${newSoldStatus ? 'SOLD' : 'AVAILABLE'}`);
       loadDashboardData();
     } catch (error) {
@@ -177,12 +194,26 @@ const AdminDashboard = () => {
     }
   };
 
-  const handleStatusChange = async (id, status) => {
+  const handleVerifyPayment = async (orderId) => {
     try {
-      await updateInquiryStatus(id, status);
-      toast.success('Status inquiry berhasil diperbarui');
+      await api(`/admin/orders/${encodeURIComponent(orderId)}/verify`, {
+        method: 'POST',
+        body: JSON.stringify({}),
+      });
+      toast.success('Pembayaran terverifikasi dan email pengiriman diproses.');
+      fetchInquiries();
     } catch (error) {
-      toast.error('Gagal mengupdate status inquiry');
+      toast.error(error.message);
+    }
+  };
+
+  const handleResendDelivery = async (orderId) => {
+    try {
+      await api(`/admin/orders/${encodeURIComponent(orderId)}/resend`, { method: 'POST' });
+      toast.success('Email berhasil dikirim ulang.');
+      fetchInquiries();
+    } catch (error) {
+      toast.error(error.message);
     }
   };
 
@@ -205,7 +236,7 @@ const AdminDashboard = () => {
             className="mb-10 p-6 bg-card border border-border rounded-2xl shadow-sm flex items-center justify-between"
           >
             <div>
-              <h1 className="text-2xl font-bold text-foreground">Welcome back, {adminUser?.name || adminUser?.email.split('@')[0]}</h1>
+              <h1 className="text-2xl font-bold text-foreground">Welcome back, {adminUser?.username || 'admin'}</h1>
               <p className="text-muted-foreground mt-1">Manage your store operations here.</p>
             </div>
             <div className="hidden sm:block">
@@ -251,6 +282,7 @@ const AdminDashboard = () => {
             />
           </div>
 
+          <PaymentSettingsCard />
           <AdminPasswordChangeCard /> {/* Game Accounts Management */}
           <section className="mb-16">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
@@ -436,6 +468,20 @@ const AdminDashboard = () => {
                         />
                       </div>
 
+                      <div className="border border-primary/20 bg-primary/5 rounded-2xl p-5">
+                        <h4 className="font-bold text-foreground mb-4">Data pengiriman otomatis</h4>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <input type="email" name="credential_email" value={formData.credential_email} onChange={handleInputChange} required
+                            className="w-full px-4 py-3 bg-background border border-border rounded-xl" placeholder="Email akun Gmail" />
+                          <input type="password" name="credential_password" value={formData.credential_password} onChange={handleInputChange} required
+                            className="w-full px-4 py-3 bg-background border border-border rounded-xl" placeholder="Password akun Gmail" />
+                          <textarea name="backup_codes" value={formData.backup_codes} onChange={handleInputChange} required rows={5}
+                            className="md:col-span-2 w-full px-4 py-3 bg-background border border-border rounded-xl resize-none"
+                            placeholder={"Masukkan tepat 8 kode cadangan Gmail, satu kode per baris"} />
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-3">Data dienkripsi AES-256-GCM dan tidak pernah dikirim ke browser publik.</p>
+                      </div>
+
                       <div className="pt-4 border-t border-border flex justify-end">
                         <button
                           type="submit"
@@ -518,7 +564,7 @@ const AdminDashboard = () => {
           <section>
             <h2 className="text-2xl font-bold text-foreground tracking-tight mb-6">Customer Inquiries</h2>
             <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
-              <BuyerInquiryTable inquiries={inquiries} onStatusChange={handleStatusChange} />
+              <BuyerInquiryTable inquiries={inquiries} onVerify={handleVerifyPayment} onResend={handleResendDelivery} />
             </div>
           </section>
         </main>
