@@ -496,11 +496,11 @@ const AdminDashboard = () => {
                         <h4 className="font-bold text-foreground mb-4">Data pengiriman otomatis</h4>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <input type="email" name="credential_email" value={formData.credential_email} onChange={handleInputChange} required
-                            className="w-full px-4 py-3 bg-background border border-border rounded-xl" placeholder="Email akun Gmail" />
+                            className="w-full px-4 py-3 bg-background border border-border rounded-xl text-white caret-white placeholder:text-slate-400" placeholder="Email akun Gmail" />
                           <input type="password" name="credential_password" value={formData.credential_password} onChange={handleInputChange} required
-                            className="w-full px-4 py-3 bg-background border border-border rounded-xl" placeholder="Password akun Gmail" />
+                            className="w-full px-4 py-3 bg-background border border-border rounded-xl text-white caret-white placeholder:text-slate-400" placeholder="Password akun Gmail" />
                           <textarea name="backup_codes" value={formData.backup_codes} onChange={handleInputChange} required rows={5}
-                            className="md:col-span-2 w-full px-4 py-3 bg-background border border-border rounded-xl resize-none"
+                            className="md:col-span-2 w-full px-4 py-3 bg-background border border-border rounded-xl resize-none text-white caret-white placeholder:text-slate-400"
                             placeholder={"Masukkan tepat 8 kode cadangan Gmail, satu kode per baris"} />
                         </div>
                         <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs">

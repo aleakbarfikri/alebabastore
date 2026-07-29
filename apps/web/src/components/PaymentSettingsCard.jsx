@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { api } from '@/lib/apiClient';
 
 const PaymentSettingsCard = () => {
+  const pakasirWebhookUrl = `${window.location.origin}/api/webhooks/pakasir`;
   const [form, setForm] = useState({
     payment_provider: 'temanqris',
     temanqris_api_key: '',
@@ -79,7 +80,7 @@ const PaymentSettingsCard = () => {
             <input className={inputClass} type="password" name="pakasir_api_key" value={form.pakasir_api_key} onChange={change}
               placeholder={configured.pakasir_api_key_configured ? 'API key Pakasir sudah tersimpan (isi untuk mengganti)' : 'API key Pakasir'} />
             <p className="md:col-span-2 text-sm text-muted-foreground">
-              Atur Webhook URL proyek Pakasir ke <code>https://alebabastore-web.vercel.app/api/webhooks/pakasir</code>.
+              Atur Webhook URL proyek Pakasir ke <code>{pakasirWebhookUrl}</code>.
             </p>
           </>
         ) : (
