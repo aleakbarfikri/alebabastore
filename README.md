@@ -20,7 +20,8 @@ mencegah database tertukar saat deployment.
 5. Login admin dengan username `alebabastore` dan password awal yang disimpan
    sebagai secret deployment.
 6. Di dashboard admin, pilih provider pembayaran. Untuk pembayaran otomatis,
-   pilih Pakasir lalu isi project slug dan API key. Isi juga konfigurasi SMTP.
+   pilih Pakasir lalu isi project slug dan API key. Isi juga API key Resend dan
+   alamat pengirim dari domain terverifikasi.
    Nilai rahasia dienkripsi dan tidak ditampilkan kembali.
 
 ### Deployment Vercel
@@ -60,7 +61,7 @@ sebagai pembayaran berhasil.
 
 Gambar upload dibatasi 10 MB, dinormalisasi, dan dikompres menjadi WebP dengan
 resolusi maksimal 1600×1600. Thumbnail terpisah dibuat untuk halaman daftar.
-Kredensial produk, API key Pakasir/TemanQRIS, webhook secret, dan password SMTP
+Kredensial produk, API key Pakasir/TemanQRIS/Resend, dan webhook secret
 dienkripsi dengan AES-256-GCM menggunakan `APP_ENCRYPTION_KEY`.
 
 Jangan commit file `.env`, database lokal, API key, password, atau backup code.

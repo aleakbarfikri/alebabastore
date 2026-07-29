@@ -1,7 +1,10 @@
 import { query } from './db.js';
 import { decrypt, encrypt } from './crypto.js';
 
-const SECRET_FIELDS = ['temanqris_api_key', 'temanqris_webhook_secret', 'pakasir_api_key', 'smtp_user', 'smtp_password'];
+const SECRET_FIELDS = [
+  'temanqris_api_key', 'temanqris_webhook_secret', 'pakasir_api_key',
+  'resend_api_key', 'smtp_user', 'smtp_password',
+];
 
 export async function getSettings({ reveal = false } = {}) {
   const result = await query('SELECT * FROM app_settings WHERE id = 1');
@@ -19,6 +22,8 @@ export function publicSettings(settings) {
     temanqris_webhook_secret_configured: Boolean(settings.temanqris_webhook_secret),
     pakasir_project_slug: settings.pakasir_project_slug || '',
     pakasir_api_key_configured: Boolean(settings.pakasir_api_key),
+    resend_api_key_configured: Boolean(settings.resend_api_key),
+    email_from: settings.email_from || '',
     smtp_host: settings.smtp_host || '',
     smtp_port: settings.smtp_port || 587,
     smtp_secure: Boolean(settings.smtp_secure),
@@ -50,13 +55,15 @@ export async function updateSettings(input) {
   await query(
     `UPDATE app_settings SET
        payment_provider=$1, temanqris_api_key=$2, temanqris_webhook_secret=$3,
-       pakasir_project_slug=$4, pakasir_api_key=$5, smtp_host=$6, smtp_port=$7,
-       smtp_secure=$8, smtp_user=$9, smtp_password=$10, smtp_from=$11, updated_at=now()
+       pakasir_project_slug=$4, pakasir_api_key=$5, resend_api_key=$6, email_from=$7,
+       smtp_host=$8, smtp_port=$9, smtp_secure=$10, smtp_user=$11,
+       smtp_password=$12, smtp_from=$13, updated_at=now()
     WHERE id=1`,
     [
       paymentProvider,
       value('temanqris_api_key'), value('temanqris_webhook_secret'),
       pakasirProjectSlug, pakasirApiKey,
+      value('resend_api_key'), String(value('email_from') || '').trim(),
       value('smtp_host'), Number(value('smtp_port') || 587), Boolean(value('smtp_secure')),
       value('smtp_user'), value('smtp_password'), value('smtp_from'),
     ],

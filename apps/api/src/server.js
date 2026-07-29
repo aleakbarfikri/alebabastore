@@ -561,7 +561,7 @@ app.post('/api/admin/orders/:orderId/sync', requireAdmin, async (req, res) => {
 
 app.post('/api/admin/orders/:orderId/resend', requireAdmin, async (req, res) => {
   await query('UPDATE orders SET fulfilled_at=NULL,delivery_error=NULL WHERE order_id=$1 AND status=$2', [req.params.orderId, 'paid']);
-  const result = await fulfillOrder(req.params.orderId);
+  const result = await fulfillOrder(req.params.orderId, { forceResend: true });
   res.json(result);
 });
 

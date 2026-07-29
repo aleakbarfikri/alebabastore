@@ -1,4 +1,3 @@
-import nodemailer from 'nodemailer';
 import { pool, query } from './db.js';
 import { decrypt } from './crypto.js';
 import { getSettings } from './settings.js';
@@ -9,7 +8,7 @@ function escapeHtml(value) {
   }[char]));
 }
 
-export async function fulfillOrder(orderId) {
+export async function fulfillOrder(orderId, { forceResend = false } = {}) {
   const client = await pool.connect();
   let order;
   try {
@@ -43,18 +42,12 @@ export async function fulfillOrder(orderId) {
   try {
     const credentials = JSON.parse(decrypt(order.delivery_credentials));
     const settings = await getSettings({ reveal: true });
-    if (!settings.smtp_host || !settings.smtp_user || !settings.smtp_password || !settings.smtp_from) {
-      throw new Error('Konfigurasi SMTP belum lengkap.');
+    if (!settings.resend_api_key || !settings.email_from) {
+      throw new Error('Konfigurasi Resend belum lengkap.');
     }
-    const transporter = nodemailer.createTransport({
-      host: settings.smtp_host,
-      port: Number(settings.smtp_port || 587),
-      secure: Boolean(settings.smtp_secure),
-      auth: { user: settings.smtp_user, pass: settings.smtp_password },
-    });
     const codes = credentials.backup_codes.map((code) => `<li><code>${escapeHtml(code)}</code></li>`).join('');
-    await transporter.sendMail({
-      from: settings.smtp_from,
+    const email = {
+      from: settings.email_from,
       to: order.buyer_email,
       subject: `Detail akun ${order.title || order.game_name} — ${order.account_code}`,
       text: [
@@ -76,12 +69,29 @@ export async function fulfillOrder(orderId) {
         <strong>Password akun:</strong> ${escapeHtml(credentials.password)}</p>
         <p><strong>8 kode cadangan Gmail:</strong></p><ol>${codes}</ol>
         <p>Segera login, ganti password, dan buat ulang kode cadangan demi keamanan.</p>`,
+    };
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      signal: AbortSignal.timeout(15_000),
+      headers: {
+        Authorization: `Bearer ${settings.resend_api_key}`,
+        'Content-Type': 'application/json',
+        'User-Agent': 'AlebabaStore/1.0',
+        'Idempotency-Key': forceResend
+          ? `alebabastore-${orderId}-resend-${Date.now()}`
+          : `alebabastore-${orderId}`,
+      },
+      body: JSON.stringify(email),
     });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      throw new Error(payload.message || payload.error || `Resend gagal (${response.status}).`);
+    }
     await query(
       `UPDATE orders SET fulfilled_at=now(), delivery_error=NULL, updated_at=now() WHERE id=$1`,
       [order.id],
     );
-    return { delivered: true };
+    return { delivered: true, provider: 'resend' };
   } catch (error) {
     await query(
       `UPDATE orders SET delivery_error=$2, updated_at=now() WHERE id=$1`,
