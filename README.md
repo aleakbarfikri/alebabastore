@@ -24,9 +24,10 @@ mencegah database tertukar saat deployment.
 
 ### Deployment Vercel
 
-Project Vercel dapat tetap menggunakan Root Directory `apps/web`. File catch-all
-di `apps/web/api/[...path].js` menerbitkan backend sebagai Serverless Function,
-sementara Vite tetap menghasilkan frontend statis. Tambahkan semua environment
+Project Vercel dapat tetap menggunakan Root Directory `apps/web`. Rewrite
+`/api/:path*` di `apps/web/vercel.json` meneruskan semua endpoint ke satu
+Serverless Function Express, sementara Vite tetap menghasilkan frontend statis.
+Tambahkan semua environment
 variable dari `.env.example` ke Production dan Preview sebelum redeploy. Neon
 Integration milik Vercel biasanya menyediakan `DATABASE_URL`; backend menerima
 nama tersebut selama database yang ditautkan memang khusus AlebabaStore.
