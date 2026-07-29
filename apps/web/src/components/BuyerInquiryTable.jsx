@@ -1,8 +1,8 @@
 import React from 'react';
-import { Copy, CheckCircle2, Send } from 'lucide-react';
+import { Copy, CheckCircle2, RefreshCw, Send } from 'lucide-react';
 import { toast } from 'sonner';
 
-const BuyerInquiryTable = ({ inquiries, onVerify, onResend }) => {
+const BuyerInquiryTable = ({ inquiries, onVerify, onSync, onResend }) => {
   const copyToClipboard = (text) => {
     navigator.clipboard.writeText(text);
     toast.success(`Copied code: ${text}`);
@@ -68,6 +68,11 @@ const BuyerInquiryTable = ({ inquiries, onVerify, onResend }) => {
                       inquiry.status === 'awaiting_confirmation' ? 'bg-amber-500/10 text-amber-600' :
                       'bg-muted text-muted-foreground'
                     }`}>{inquiry.status}</span>
+                    {!['paid', 'expired', 'cancelled'].includes(inquiry.status) && (
+                      <button onClick={() => onSync(inquiry.order_id)} className="p-2 rounded-lg bg-primary/10 text-primary" title="Sinkronkan status dari TemanQRIS">
+                        <RefreshCw className="w-4 h-4" />
+                      </button>
+                    )}
                     {inquiry.status === 'awaiting_confirmation' && (
                       <button onClick={() => onVerify(inquiry.order_id)} className="p-2 rounded-lg bg-emerald-500/10 text-emerald-600" title="Verifikasi pembayaran">
                         <CheckCircle2 className="w-4 h-4" />

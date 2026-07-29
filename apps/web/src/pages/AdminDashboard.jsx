@@ -208,12 +208,23 @@ const AdminDashboard = () => {
   };
 
   const handleVerifyPayment = async (orderId) => {
+    if (!window.confirm('Pastikan dana sudah benar-benar masuk. Konfirmasi pembayaran ini sekarang?')) return;
     try {
       await api(`/admin/orders/${encodeURIComponent(orderId)}/verify`, {
         method: 'POST',
         body: JSON.stringify({}),
       });
       toast.success('Pembayaran terverifikasi dan email pengiriman diproses.');
+      fetchInquiries();
+    } catch (error) {
+      toast.error(error.message);
+    }
+  };
+
+  const handleSyncPayment = async (orderId) => {
+    try {
+      const order = await api(`/admin/orders/${encodeURIComponent(orderId)}/sync`, { method: 'POST' });
+      toast.success(`Status TemanQRIS: ${order.status}`);
       fetchInquiries();
     } catch (error) {
       toast.error(error.message);
@@ -582,7 +593,7 @@ const AdminDashboard = () => {
           <section>
             <h2 className="text-2xl font-bold text-foreground tracking-tight mb-6">Customer Inquiries</h2>
             <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
-              <BuyerInquiryTable inquiries={inquiries} onVerify={handleVerifyPayment} onResend={handleResendDelivery} />
+              <BuyerInquiryTable inquiries={inquiries} onVerify={handleVerifyPayment} onSync={handleSyncPayment} onResend={handleResendDelivery} />
             </div>
           </section>
         </main>

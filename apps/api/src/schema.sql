@@ -66,6 +66,7 @@ CREATE TABLE IF NOT EXISTS orders (
   payment_link_code text,
   payment_url text,
   provider_payload jsonb,
+  provider_checked_at timestamptz,
   paid_at timestamptz,
   fulfilled_at timestamptz,
   delivery_error text,
@@ -76,6 +77,8 @@ CREATE TABLE IF NOT EXISTS orders (
 CREATE INDEX IF NOT EXISTS orders_account_idx ON orders(game_account_id);
 CREATE INDEX IF NOT EXISTS orders_status_idx ON orders(status);
 CREATE INDEX IF NOT EXISTS reviews_account_idx ON reviews(game_account_id);
+
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS provider_checked_at timestamptz;
 
 CREATE TABLE IF NOT EXISTS app_settings (
   id smallint PRIMARY KEY DEFAULT 1 CHECK (id = 1),
