@@ -63,6 +63,7 @@ CREATE TABLE IF NOT EXISTS orders (
   buyer_phone text NOT NULL DEFAULT '',
   amount numeric(14,2) NOT NULL,
   status text NOT NULL DEFAULT 'pending',
+  payment_provider text NOT NULL DEFAULT 'temanqris',
   payment_link_code text,
   payment_url text,
   provider_payload jsonb,
@@ -79,11 +80,15 @@ CREATE INDEX IF NOT EXISTS orders_status_idx ON orders(status);
 CREATE INDEX IF NOT EXISTS reviews_account_idx ON reviews(game_account_id);
 
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS provider_checked_at timestamptz;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_provider text NOT NULL DEFAULT 'temanqris';
 
 CREATE TABLE IF NOT EXISTS app_settings (
   id smallint PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+  payment_provider text NOT NULL DEFAULT 'temanqris',
   temanqris_api_key text,
   temanqris_webhook_secret text,
+  pakasir_project_slug text,
+  pakasir_api_key text,
   smtp_host text,
   smtp_port integer NOT NULL DEFAULT 587,
   smtp_secure boolean NOT NULL DEFAULT false,
@@ -94,3 +99,7 @@ CREATE TABLE IF NOT EXISTS app_settings (
 );
 
 INSERT INTO app_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
+
+ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS payment_provider text NOT NULL DEFAULT 'temanqris';
+ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS pakasir_project_slug text;
+ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS pakasir_api_key text;

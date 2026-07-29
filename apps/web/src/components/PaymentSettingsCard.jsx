@@ -5,8 +5,11 @@ import { api } from '@/lib/apiClient';
 
 const PaymentSettingsCard = () => {
   const [form, setForm] = useState({
+    payment_provider: 'temanqris',
     temanqris_api_key: '',
     temanqris_webhook_secret: '',
+    pakasir_project_slug: '',
+    pakasir_api_key: '',
     smtp_host: '',
     smtp_port: 587,
     smtp_secure: false,
@@ -22,6 +25,8 @@ const PaymentSettingsCard = () => {
       setConfigured(data);
       setForm((prev) => ({
         ...prev,
+        payment_provider: data.payment_provider || 'temanqris',
+        pakasir_project_slug: data.pakasir_project_slug || '',
         smtp_host: data.smtp_host || '',
         smtp_port: data.smtp_port || 587,
         smtp_secure: Boolean(data.smtp_secure),
@@ -45,6 +50,7 @@ const PaymentSettingsCard = () => {
         ...prev,
         temanqris_api_key: '',
         temanqris_webhook_secret: '',
+        pakasir_api_key: '',
         smtp_user: '',
         smtp_password: '',
       }));
@@ -67,10 +73,31 @@ const PaymentSettingsCard = () => {
         </div>
       </div>
       <form onSubmit={submit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <input className={inputClass} type="password" name="temanqris_api_key" value={form.temanqris_api_key} onChange={change}
-          placeholder={configured.temanqris_api_key_configured ? 'API key TemanQRIS sudah tersimpan (isi untuk mengganti)' : 'API key TemanQRIS'} />
-        <input className={inputClass} type="password" name="temanqris_webhook_secret" value={form.temanqris_webhook_secret} onChange={change}
-          placeholder={configured.temanqris_webhook_secret_configured ? 'Webhook secret sudah tersimpan (isi untuk mengganti)' : 'Webhook secret TemanQRIS'} />
+        <label className="md:col-span-2">
+          <span className="block text-sm font-semibold mb-2">Provider pembayaran aktif</span>
+          <select className={inputClass} name="payment_provider" value={form.payment_provider} onChange={change}>
+            <option value="pakasir">Pakasir — otomatis penuh</option>
+            <option value="temanqris">TemanQRIS — verifikasi merchant</option>
+          </select>
+        </label>
+        {form.payment_provider === 'pakasir' ? (
+          <>
+            <input className={inputClass} name="pakasir_project_slug" value={form.pakasir_project_slug} onChange={change}
+              placeholder="Project slug Pakasir" />
+            <input className={inputClass} type="password" name="pakasir_api_key" value={form.pakasir_api_key} onChange={change}
+              placeholder={configured.pakasir_api_key_configured ? 'API key Pakasir sudah tersimpan (isi untuk mengganti)' : 'API key Pakasir'} />
+            <p className="md:col-span-2 text-sm text-muted-foreground">
+              Atur Webhook URL proyek Pakasir ke <code>https://alebabastore-web.vercel.app/api/webhooks/pakasir</code>.
+            </p>
+          </>
+        ) : (
+          <>
+            <input className={inputClass} type="password" name="temanqris_api_key" value={form.temanqris_api_key} onChange={change}
+              placeholder={configured.temanqris_api_key_configured ? 'API key TemanQRIS sudah tersimpan (isi untuk mengganti)' : 'API key TemanQRIS'} />
+            <input className={inputClass} type="password" name="temanqris_webhook_secret" value={form.temanqris_webhook_secret} onChange={change}
+              placeholder={configured.temanqris_webhook_secret_configured ? 'Webhook secret sudah tersimpan (isi untuk mengganti)' : 'Webhook secret TemanQRIS'} />
+          </>
+        )}
         <input className={inputClass} name="smtp_host" value={form.smtp_host} onChange={change} placeholder="SMTP host, contoh smtp.gmail.com" />
         <div className="grid grid-cols-2 gap-3">
           <input className={inputClass} type="number" name="smtp_port" value={form.smtp_port} onChange={change} placeholder="Port" />

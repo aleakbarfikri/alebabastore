@@ -15,6 +15,7 @@ import {
 import { decrypt, encrypt } from './crypto.js';
 import { getSettings, publicSettings, updateSettings } from './settings.js';
 import { fulfillOrder } from './fulfillment.js';
+import { pakasirPaymentUrl, pakasirTransactionDetail } from './pakasir.js';
 import { temanqris, verifyWebhook } from './temanqris.js';
 
 const app = express();
@@ -31,9 +32,9 @@ const vercelUrl = vercelHostname ? `https://${vercelHostname}` : '';
 const publicBaseUrl = String(process.env.PUBLIC_BASE_URL || vercelUrl || `http://localhost:${port}`).replace(/\/$/, '');
 const PROVIDER_STATUSES = new Set(['pending', 'awaiting_confirmation', 'paid', 'expired', 'cancelled']);
 
-async function syncOrderFromTemanQRIS(orderId, { force = false } = {}) {
+async function syncOrderFromProvider(orderId, { force = false } = {}) {
   const localResult = await query(
-    `SELECT order_id,status,provider_checked_at FROM orders WHERE order_id=$1`,
+    `SELECT order_id,status,payment_provider,amount,provider_checked_at FROM orders WHERE order_id=$1`,
     [orderId],
   );
   const localOrder = localResult.rows[0];
@@ -41,6 +42,34 @@ async function syncOrderFromTemanQRIS(orderId, { force = false } = {}) {
     const error = new Error('Order tidak ditemukan.');
     error.status = 404;
     throw error;
+  }
+  if (localOrder.payment_provider === 'pakasir') {
+    const checkedRecently = localOrder.provider_checked_at
+      && Date.now() - new Date(localOrder.provider_checked_at).getTime() < 15 * 60_000;
+    if (!force && (checkedRecently || localOrder.status !== 'pending')) return localOrder;
+    const { data, transaction } = await pakasirTransactionDetail({
+      orderId,
+      amount: localOrder.amount,
+    });
+    const pakasirStatus = String(transaction.status || '').toLowerCase();
+    const nextStatus = pakasirStatus === 'completed'
+      ? 'paid'
+      : ['expired', 'cancelled'].includes(pakasirStatus)
+        ? pakasirStatus
+        : localOrder.status;
+    const updated = await query(
+      `UPDATE orders SET
+         status=CASE WHEN status='paid' THEN status ELSE $2 END,
+         paid_at=CASE WHEN $2='paid' THEN COALESCE(paid_at,$3::timestamptz,now()) ELSE paid_at END,
+         provider_payload=$4,provider_checked_at=now(),updated_at=now()
+       WHERE order_id=$1
+       RETURNING order_id,status,paid_at,fulfilled_at,created_at,provider_checked_at`,
+      [orderId, nextStatus, transaction.completed_at || null, data],
+    );
+    if (updated.rows[0]?.status === 'paid' && !updated.rows[0]?.fulfilled_at) {
+      fulfillOrder(orderId).catch((error) => console.error('[fulfillment]', orderId, error.message));
+    }
+    return updated.rows[0];
   }
 
   const checkedRecently = localOrder.provider_checked_at
@@ -112,6 +141,41 @@ app.post('/api/webhooks/temanqris', express.raw({ type: 'application/json', limi
 
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: false }));
+
+app.post('/api/webhooks/pakasir', async (req, res, next) => {
+  try {
+    const orderId = String(req.body?.order_id || '');
+    if (!orderId) return res.status(400).json({ error: 'order_id tidak tersedia.' });
+    const result = await query(
+      `SELECT order_id,amount,status,payment_provider FROM orders WHERE order_id=$1`,
+      [orderId],
+    );
+    const order = result.rows[0];
+    if (!order || order.payment_provider !== 'pakasir') {
+      return res.status(404).json({ error: 'Order Pakasir tidak ditemukan.' });
+    }
+    if (order.status === 'paid') return res.json({ success: true });
+
+    const { data, transaction } = await pakasirTransactionDetail({
+      orderId,
+      amount: order.amount,
+    });
+    const pakasirStatus = String(transaction.status || '').toLowerCase();
+    const paymentMethod = String(transaction.payment_method || '').toLowerCase();
+    if (pakasirStatus !== 'completed' || paymentMethod !== 'qris') {
+      return res.status(202).json({ success: true, status: pakasirStatus });
+    }
+    await query(
+      `UPDATE orders SET status='paid',paid_at=COALESCE(paid_at,$2::timestamptz,now()),
+       provider_payload=$3,provider_checked_at=now(),updated_at=now() WHERE order_id=$1`,
+      [orderId, transaction.completed_at || null, data],
+    );
+    res.json({ success: true });
+    fulfillOrder(orderId).catch((error) => console.error('[fulfillment]', orderId, error.message));
+  } catch (error) {
+    next(error);
+  }
+});
 
 app.use('/api', (req, res, next) => {
   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
@@ -371,6 +435,8 @@ app.post('/api/checkout', publicWriteLimiter, async (req, res) => {
     return res.status(400).json({ error: 'Nama, email aktif, dan akun yang dibeli wajib diisi.' });
   }
   const orderId = `ALB-${Date.now().toString(36).toUpperCase()}-${crypto.randomBytes(3).toString('hex').toUpperCase()}`.slice(0, 30);
+  const paymentSettings = await getSettings();
+  const paymentProvider = paymentSettings.payment_provider === 'pakasir' ? 'pakasir' : 'temanqris';
   const client = await pool.connect();
   let account;
   let insertedId;
@@ -403,9 +469,9 @@ app.post('/api/checkout', publicWriteLimiter, async (req, res) => {
       throw error;
     }
     const inserted = await client.query(
-      `INSERT INTO orders(order_id,game_account_id,buyer_name,buyer_email,buyer_phone,amount)
-       VALUES($1,$2,$3,$4,$5,$6) RETURNING id`,
-      [orderId, account.id, buyerName, buyerEmail, String(req.body.buyer_phone || '').trim(), account.price],
+      `INSERT INTO orders(order_id,game_account_id,buyer_name,buyer_email,buyer_phone,amount,payment_provider)
+       VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
+      [orderId, account.id, buyerName, buyerEmail, String(req.body.buyer_phone || '').trim(), account.price, paymentProvider],
     );
     insertedId = inserted.rows[0].id;
     await client.query('COMMIT');
@@ -416,6 +482,18 @@ app.post('/api/checkout', publicWriteLimiter, async (req, res) => {
     client.release();
   }
   try {
+    if (paymentProvider === 'pakasir') {
+      const payment = await pakasirPaymentUrl({
+        orderId,
+        amount: account.price,
+        redirectUrl: `${publicBaseUrl}/payment-status?order_id=${encodeURIComponent(orderId)}`,
+      });
+      await query(
+        `UPDATE orders SET payment_url=$2,provider_payload=$3,updated_at=now() WHERE id=$1`,
+        [insertedId, payment.paymentUrl, { project: payment.project }],
+      );
+      return res.status(201).json({ order_id: orderId, payment_url: payment.paymentUrl });
+    }
     const result = await temanqris('/payment-link', {
       method: 'POST',
       body: JSON.stringify({
@@ -441,7 +519,7 @@ app.post('/api/checkout', publicWriteLimiter, async (req, res) => {
 
 app.get('/api/orders/:orderId/status', async (req, res) => {
   try {
-    await syncOrderFromTemanQRIS(req.params.orderId);
+    await syncOrderFromProvider(req.params.orderId);
   } catch (error) {
     if (error.status === 404) throw error;
     console.error('[payment-sync]', req.params.orderId, error.message);
@@ -463,6 +541,10 @@ app.get('/api/admin/orders', requireAdmin, async (_req, res) => {
 });
 
 app.post('/api/admin/orders/:orderId/verify', requireAdmin, async (req, res) => {
+  const order = await query('SELECT payment_provider FROM orders WHERE order_id=$1', [req.params.orderId]);
+  if (order.rows[0]?.payment_provider === 'pakasir') {
+    return res.status(400).json({ error: 'Pembayaran Pakasir dikonfirmasi otomatis dari status transaksi.' });
+  }
   const result = await temanqris(`/orders/${encodeURIComponent(req.params.orderId)}/verify`, {
     method: 'POST',
     body: JSON.stringify({ payer_name: req.body.payer_name || req.admin.username, payer_note: 'Verified via AlebabaStore admin' }),
@@ -473,7 +555,7 @@ app.post('/api/admin/orders/:orderId/verify', requireAdmin, async (req, res) => 
 });
 
 app.post('/api/admin/orders/:orderId/sync', requireAdmin, async (req, res) => {
-  const order = await syncOrderFromTemanQRIS(req.params.orderId, { force: true });
+  const order = await syncOrderFromProvider(req.params.orderId, { force: true });
   res.json(order);
 });
 
