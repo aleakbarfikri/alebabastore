@@ -52,7 +52,7 @@ const PaymentStatusPage = () => {
           {paid ? <CheckCircle2 className="w-16 h-16 text-emerald-500 mx-auto mb-5" /> :
             stopped ? <XCircle className="w-16 h-16 text-destructive mx-auto mb-5" /> :
             <Clock3 className="w-16 h-16 text-primary mx-auto mb-5 animate-pulse" />}
-          <h1 className="text-3xl font-bold mb-3">{title}</h1>
+          <h1 className={`text-3xl font-bold mb-3 ${paid ? 'text-white' : 'text-foreground'}`}>{title}</h1>
           <p className="text-muted-foreground mb-6">{description}</p>
           {paid && <div className="flex items-center justify-center gap-2 text-emerald-600 mb-6"><MailCheck /> Cek inbox dan folder spam</div>}
           {error && <p className="text-destructive mb-4">{error}</p>}
