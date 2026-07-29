@@ -89,6 +89,8 @@ CREATE TABLE IF NOT EXISTS app_settings (
   temanqris_webhook_secret text,
   pakasir_project_slug text,
   pakasir_api_key text,
+  resend_api_key text,
+  email_from text,
   smtp_host text,
   smtp_port integer NOT NULL DEFAULT 587,
   smtp_secure boolean NOT NULL DEFAULT false,
@@ -103,3 +105,5 @@ INSERT INTO app_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
 ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS payment_provider text NOT NULL DEFAULT 'temanqris';
 ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS pakasir_project_slug text;
 ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS pakasir_api_key text;
+ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS resend_api_key text;
+ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS email_from text;

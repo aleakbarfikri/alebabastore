@@ -10,12 +10,8 @@ const PaymentSettingsCard = () => {
     temanqris_webhook_secret: '',
     pakasir_project_slug: '',
     pakasir_api_key: '',
-    smtp_host: '',
-    smtp_port: 587,
-    smtp_secure: false,
-    smtp_user: '',
-    smtp_password: '',
-    smtp_from: '',
+    resend_api_key: '',
+    email_from: '',
   });
   const [configured, setConfigured] = useState({});
   const [saving, setSaving] = useState(false);
@@ -27,10 +23,7 @@ const PaymentSettingsCard = () => {
         ...prev,
         payment_provider: data.payment_provider || 'temanqris',
         pakasir_project_slug: data.pakasir_project_slug || '',
-        smtp_host: data.smtp_host || '',
-        smtp_port: data.smtp_port || 587,
-        smtp_secure: Boolean(data.smtp_secure),
-        smtp_from: data.smtp_from || '',
+        email_from: data.email_from || '',
       }));
     }).catch((error) => toast.error(error.message));
   }, []);
@@ -51,8 +44,7 @@ const PaymentSettingsCard = () => {
         temanqris_api_key: '',
         temanqris_webhook_secret: '',
         pakasir_api_key: '',
-        smtp_user: '',
-        smtp_password: '',
+        resend_api_key: '',
       }));
       toast.success('Pengaturan payment dan email tersimpan aman.');
     } catch (error) {
@@ -98,18 +90,14 @@ const PaymentSettingsCard = () => {
               placeholder={configured.temanqris_webhook_secret_configured ? 'Webhook secret sudah tersimpan (isi untuk mengganti)' : 'Webhook secret TemanQRIS'} />
           </>
         )}
-        <input className={inputClass} name="smtp_host" value={form.smtp_host} onChange={change} placeholder="SMTP host, contoh smtp.gmail.com" />
-        <div className="grid grid-cols-2 gap-3">
-          <input className={inputClass} type="number" name="smtp_port" value={form.smtp_port} onChange={change} placeholder="Port" />
-          <label className="flex items-center gap-2 px-4 border border-border rounded-xl">
-            <input type="checkbox" name="smtp_secure" checked={form.smtp_secure} onChange={change} /> SSL langsung
-          </label>
+        <div className="md:col-span-2 border-t border-border pt-4 mt-2">
+          <h3 className="font-bold mb-1">Pengiriman email otomatis via Resend</h3>
+          <p className="text-sm text-muted-foreground">Gunakan API key Resend dan alamat pengirim dari domain yang sudah terverifikasi.</p>
         </div>
-        <input className={inputClass} name="smtp_user" value={form.smtp_user} onChange={change}
-          placeholder={configured.smtp_user_configured ? 'SMTP user sudah tersimpan (isi untuk mengganti)' : 'SMTP username'} />
-        <input className={inputClass} type="password" name="smtp_password" value={form.smtp_password} onChange={change}
-          placeholder={configured.smtp_password_configured ? 'SMTP password sudah tersimpan (isi untuk mengganti)' : 'SMTP password / app password'} />
-        <input className={`${inputClass} md:col-span-2`} type="email" name="smtp_from" value={form.smtp_from} onChange={change} placeholder="Email pengirim, contoh toko@domain.com" />
+        <input className={inputClass} type="password" name="resend_api_key" value={form.resend_api_key} onChange={change}
+          placeholder={configured.resend_api_key_configured ? 'API key Resend sudah tersimpan (isi untuk mengganti)' : 'API key Resend, diawali re_'} />
+        <input className={inputClass} name="email_from" value={form.email_from} onChange={change}
+          placeholder="AlebabaStore <orders@domain-terverifikasi.com>" />
         <div className="md:col-span-2 flex justify-end">
           <button disabled={saving} className="px-6 py-3 bg-primary text-primary-foreground rounded-xl font-bold flex gap-2 items-center disabled:opacity-50">
             <Save className="w-4 h-4" /> {saving ? 'Menyimpan...' : 'Simpan Pengaturan'}
