@@ -13,6 +13,7 @@ const UploadProofPage = () => {
   const [searchParams] = useSearchParams();
   const { accounts, fetchAllAccounts } = useGameAccounts();
   const { submitInquiry, loading } = useBuyerInquiries();
+  const availableAccounts = accounts.filter((account) => !account.sold);
 
   const [formData, setFormData] = useState({
     buyer_name: '',
@@ -24,6 +25,16 @@ const UploadProofPage = () => {
   useEffect(() => {
     fetchAllAccounts();
   }, []);
+
+  useEffect(() => {
+    if (
+      formData.game_account_id
+      && accounts.length > 0
+      && !availableAccounts.some((account) => account.id === formData.game_account_id)
+    ) {
+      setFormData((current) => ({ ...current, game_account_id: '' }));
+    }
+  }, [accounts, formData.game_account_id]);
 
   const handleInputChange = (e) => {
     setFormData({
@@ -140,8 +151,10 @@ const UploadProofPage = () => {
                   required
                   className="w-full px-4 py-3 bg-background border border-border rounded-xl text-foreground focus:outline-none focus:ring-2 focus:ring-primary transition-all"
                 >
-                  <option value="">Pilih akun game</option>
-                  {accounts.map((account) => (
+                  <option value="">
+                    {availableAccounts.length ? 'Pilih akun game' : 'Belum ada akun tersedia'}
+                  </option>
+                  {availableAccounts.map((account) => (
                     <option key={account.id} value={account.id}>
                       {account.game_name} - Level {account.level} - {new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(account.price)}
                     </option>
@@ -152,13 +165,13 @@ const UploadProofPage = () => {
               <div className="flex items-start gap-3 rounded-xl border border-primary/20 bg-primary/5 p-4">
                 <LockKeyhole className="w-5 h-5 text-primary mt-0.5 shrink-0" />
                 <p className="text-sm text-muted-foreground">
-                  Email wajib aktif. Kredensial produk hanya dikirim setelah webhook pembayaran TemanQRIS terverifikasi.
+                  Email wajib aktif. Kredensial produk hanya dikirim setelah pembayaran QRIS terverifikasi otomatis.
                 </p>
               </div>
 
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || availableAccounts.length === 0}
                 className="w-full px-8 py-4 bg-primary text-primary-foreground rounded-xl font-semibold hover:bg-primary/90 transition-all gaming-glow flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {loading ? (

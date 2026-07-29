@@ -220,13 +220,22 @@ function accountView(row, admin = false) {
 
 async function fetchAccounts({ id, gameName, admin = false } = {}) {
   const params = [];
-  const where = [];
+  const where = ['g.archived_at IS NULL'];
   if (id) { params.push(id); where.push(`g.id=$${params.length}`); }
   if (gameName) { params.push(gameName); where.push(`g.game_name=$${params.length}`); }
+  if (!admin) {
+    where.push('g.sold=false');
+    where.push(`NOT EXISTS (
+      SELECT 1 FROM orders o
+       WHERE o.game_account_id=g.id
+         AND o.status IN ('pending','awaiting_confirmation')
+         AND o.created_at > now() - interval '48 hours'
+    )`);
+  }
   const result = await query(
     `SELECT g.*, COALESCE(array_agg(i.id ORDER BY i.sort_order) FILTER (WHERE i.id IS NOT NULL), '{}') image_ids
        FROM game_accounts g LEFT JOIN account_images i ON i.account_id=g.id
-      ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+      WHERE ${where.join(' AND ')}
       GROUP BY g.id ORDER BY g.created_at DESC`,
     params,
   );
@@ -394,9 +403,40 @@ app.patch('/api/accounts/:id', requireAdmin, upload.array('images', 10), async (
 });
 
 app.delete('/api/accounts/:id', requireAdmin, async (req, res) => {
-  const result = await query('DELETE FROM game_accounts WHERE id=$1', [req.params.id]);
-  if (!result.rowCount) return res.status(404).json({ error: 'Akun tidak ditemukan.' });
-  res.status(204).end();
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const account = await client.query(
+      'SELECT id FROM game_accounts WHERE id=$1 AND archived_at IS NULL FOR UPDATE',
+      [req.params.id],
+    );
+    if (!account.rowCount) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Akun tidak ditemukan.' });
+    }
+
+    const transactions = await client.query(
+      'SELECT 1 FROM orders WHERE game_account_id=$1 LIMIT 1',
+      [req.params.id],
+    );
+    if (transactions.rowCount) {
+      await client.query(
+        'UPDATE game_accounts SET sold=true,archived_at=now(),updated_at=now() WHERE id=$1',
+        [req.params.id],
+      );
+      await client.query('COMMIT');
+      return res.json({ archived: true });
+    }
+
+    await client.query('DELETE FROM game_accounts WHERE id=$1', [req.params.id]);
+    await client.query('COMMIT');
+    return res.json({ archived: false });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
 });
 
 app.get('/api/accounts/:id/reviews', async (req, res) => {
@@ -443,7 +483,7 @@ app.post('/api/checkout', publicWriteLimiter, async (req, res) => {
   try {
     await client.query('BEGIN');
     const accountResult = await client.query(
-      'SELECT * FROM game_accounts WHERE id=$1 AND sold=false FOR UPDATE',
+      'SELECT * FROM game_accounts WHERE id=$1 AND sold=false AND archived_at IS NULL FOR UPDATE',
       [req.body.game_account_id],
     );
     account = accountResult.rows[0];

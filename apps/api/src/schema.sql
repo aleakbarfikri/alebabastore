@@ -31,10 +31,13 @@ CREATE TABLE IF NOT EXISTS game_accounts (
   price numeric(14,2) NOT NULL CHECK (price >= 0),
   townhall_level integer,
   sold boolean NOT NULL DEFAULT false,
+  archived_at timestamptz,
   delivery_credentials text,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
+
+ALTER TABLE game_accounts ADD COLUMN IF NOT EXISTS archived_at timestamptz;
 
 CREATE TABLE IF NOT EXISTS account_images (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
