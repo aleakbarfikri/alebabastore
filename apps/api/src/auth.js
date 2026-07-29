@@ -2,13 +2,13 @@ import crypto from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import { query } from './db.js';
 import { decrypt, encrypt, sha256 } from './crypto.js';
+import { generateRecoveryCodes, normalizeRecoveryCode, recoveryCodeHashes } from './recoveryCodes.js';
 import { generateTotpSecret, totpUri, verifyTotp } from './totp.js';
 
 export const SESSION_COOKIE = 'alebaba_admin_session';
 export const TWO_FACTOR_COOKIE = 'alebaba_admin_2fa';
 const SESSION_DAYS = 7;
 const TWO_FACTOR_CHALLENGE_MINUTES = 5;
-
 function secureCookieOptions(path = '/') {
   return {
     httpOnly: true,
@@ -41,7 +41,7 @@ export async function bootstrapAdmin() {
     await query(
       `UPDATE admins
           SET username=$2, password_hash=$3, password_reset_version=$4,
-              totp_secret=NULL, totp_enabled_at=NULL, updated_at=now()
+              totp_secret=NULL, totp_enabled_at=NULL, totp_recovery_codes='{}', updated_at=now()
         WHERE id=$1`,
       [admin.id, username, passwordHash, resetVersion],
     );
@@ -120,20 +120,67 @@ export async function completeTwoFactorChallenge(req, res, code) {
     throw error;
   }
   const secret = challenge.setup_secret || decrypt(admin.totp_secret);
-  if (!secret || !verifyTotp(secret, code)) {
+  const totpValid = Boolean(secret && verifyTotp(secret, code));
+  let recoveryValid = false;
+  if (!challenge.setup_secret && !totpValid) {
+    const codeHash = sha256(normalizeRecoveryCode(code));
+    if (normalizeRecoveryCode(code).length === 12) {
+      const consumed = await query(
+        `UPDATE admins
+            SET totp_recovery_codes=array_remove(totp_recovery_codes,$2),updated_at=now()
+          WHERE id=$1 AND $2=ANY(totp_recovery_codes)
+          RETURNING id`,
+        [admin.id, codeHash],
+      );
+      recoveryValid = consumed.rowCount === 1;
+    }
+  }
+  if (!totpValid && !recoveryValid) {
     const error = new Error('Kode autentikasi tidak valid.');
     error.status = 401;
     throw error;
   }
+  let recoveryCodes;
   if (challenge.setup_secret) {
+    recoveryCodes = generateRecoveryCodes();
     await query(
-      'UPDATE admins SET totp_secret=$2,totp_enabled_at=now(),updated_at=now() WHERE id=$1',
-      [admin.id, encrypt(challenge.setup_secret)],
+      `UPDATE admins
+          SET totp_secret=$2,totp_enabled_at=now(),totp_recovery_codes=$3,updated_at=now()
+        WHERE id=$1`,
+      [admin.id, encrypt(challenge.setup_secret), recoveryCodeHashes(recoveryCodes)],
     );
   }
   res.clearCookie(TWO_FACTOR_COOKIE, secureCookieOptions('/api/auth'));
   await createSession(admin.id, res);
-  return { id: admin.id, username: admin.username, role: admin.role };
+  return {
+    user: { id: admin.id, username: admin.username, role: admin.role },
+    recovery_codes: recoveryCodes,
+  };
+}
+
+export async function regenerateRecoveryCodes(adminId, currentPassword, totpCode) {
+  const result = await query(
+    'SELECT password_hash,totp_secret FROM admins WHERE id=$1',
+    [adminId],
+  );
+  const admin = result.rows[0];
+  if (!admin || !(await bcrypt.compare(String(currentPassword || ''), admin.password_hash))) {
+    const error = new Error('Password admin saat ini salah.');
+    error.status = 400;
+    throw error;
+  }
+  const secret = decrypt(admin.totp_secret);
+  if (!secret || !verifyTotp(secret, totpCode)) {
+    const error = new Error('Kode Authenticator tidak valid.');
+    error.status = 400;
+    throw error;
+  }
+  const recoveryCodes = generateRecoveryCodes();
+  await query(
+    'UPDATE admins SET totp_recovery_codes=$2,updated_at=now() WHERE id=$1',
+    [adminId, recoveryCodeHashes(recoveryCodes)],
+  );
+  return recoveryCodes;
 }
 
 export async function currentAdmin(req) {

@@ -15,6 +15,8 @@ const AdminLoginPage = () => {
     code: '',
   });
   const [twoFactor, setTwoFactor] = useState(null);
+  const [useRecoveryCode, setUseRecoveryCode] = useState(false);
+  const [recoveryCodes, setRecoveryCodes] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
@@ -33,8 +35,11 @@ const AdminLoginPage = () => {
       setError('Masukkan username dan password.');
       return;
     }
-    if (twoFactor && !/^\d{6}$/.test(formData.code.replace(/\s/g, ''))) {
-      setError('Masukkan kode autentikasi 6 digit.');
+    const normalizedCode = formData.code.replace(/[^A-Za-z0-9]/g, '');
+    if (twoFactor && (
+      useRecoveryCode ? normalizedCode.length !== 12 : !/^\d{6}$/.test(normalizedCode)
+    )) {
+      setError(useRecoveryCode ? 'Masukkan recovery code yang valid.' : 'Masukkan kode autentikasi 6 digit.');
       return;
     }
 
@@ -54,6 +59,11 @@ const AdminLoginPage = () => {
       if (authData.user?.role !== 'admin') {
         setError('Akses ditolak.');
         setLoading(false);
+        return;
+      }
+      if (authData.recovery_codes?.length) {
+        setRecoveryCodes(authData.recovery_codes);
+        toast.success('2FA aktif. Simpan recovery code Anda.');
         return;
       }
 
@@ -101,7 +111,29 @@ const AdminLoginPage = () => {
               </div>
             )}
 
-            <form onSubmit={handleSubmit} className="space-y-5">
+            {recoveryCodes.length > 0 ? (
+              <div className="space-y-5">
+                <div>
+                  <h2 className="font-bold text-foreground text-lg mb-2">Simpan recovery code</h2>
+                  <p className="text-sm text-muted-foreground">
+                    Setiap kode hanya dapat dipakai sekali jika aplikasi Authenticator tidak tersedia.
+                    Kode ini tidak akan ditampilkan lagi.
+                  </p>
+                </div>
+                <div className="grid grid-cols-2 gap-2 rounded-xl bg-background border border-border p-4">
+                  {recoveryCodes.map((code) => (
+                    <code key={code} className="text-center text-sm text-foreground">{code}</code>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => navigate('/admin')}
+                  className="w-full px-8 py-4 bg-primary text-primary-foreground rounded-xl font-bold"
+                >
+                  Saya sudah menyimpan
+                </button>
+              </div>
+            ) : <form onSubmit={handleSubmit} className="space-y-5">
               {!twoFactor && <div>
                 <label htmlFor="username" className="block text-sm font-semibold text-foreground mb-2">
                   Username Admin
@@ -152,13 +184,13 @@ const AdminLoginPage = () => {
 
               {twoFactor && <div>
                 <label htmlFor="code" className="block text-sm font-semibold text-foreground mb-2">
-                  Kode autentikasi 6 digit
+                  {useRecoveryCode ? 'Recovery code' : 'Kode autentikasi 6 digit'}
                 </label>
                 <input
                   type="text"
-                  inputMode="numeric"
-                  pattern="[0-9]{6}"
-                  maxLength={6}
+                  inputMode={useRecoveryCode ? 'text' : 'numeric'}
+                  pattern={useRecoveryCode ? undefined : '[0-9]{6}'}
+                  maxLength={useRecoveryCode ? 14 : 6}
                   id="code"
                   name="code"
                   value={formData.code}
@@ -167,9 +199,22 @@ const AdminLoginPage = () => {
                   autoFocus
                   disabled={loading}
                   autoComplete="one-time-code"
-                  className="w-full px-4 py-3.5 bg-background border border-border rounded-xl text-center text-foreground text-2xl tracking-[0.5em] placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all disabled:opacity-50"
-                  placeholder="000000"
+                  className={`w-full px-4 py-3.5 bg-background border border-border rounded-xl text-center text-foreground text-2xl placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all disabled:opacity-50 ${useRecoveryCode ? 'tracking-wider' : 'tracking-[0.5em]'}`}
+                  placeholder={useRecoveryCode ? 'XXXX-XXXX-XXXX' : '000000'}
                 />
+                {!twoFactor.setup_required && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setUseRecoveryCode((current) => !current);
+                      setFormData((current) => ({ ...current, code: '' }));
+                      setError(null);
+                    }}
+                    className="mt-3 text-sm font-semibold text-primary hover:underline"
+                  >
+                    {useRecoveryCode ? 'Gunakan aplikasi Authenticator' : 'Gunakan recovery code'}
+                  </button>
+                )}
               </div>}
 
               <button
@@ -189,7 +234,7 @@ const AdminLoginPage = () => {
                   </>
                 )}
               </button>
-            </form>
+            </form>}
           </div>
           
           <p className="text-center text-xs text-muted-foreground mt-8">

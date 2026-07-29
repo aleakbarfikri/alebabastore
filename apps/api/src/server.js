@@ -11,9 +11,10 @@ import bcrypt from 'bcryptjs';
 import { initDatabase, pool, query } from './db.js';
 import {
   SESSION_COOKIE, beginTwoFactorChallenge, bootstrapAdmin, completeTwoFactorChallenge,
-  currentAdmin, requireAdmin, revokeSession,
+  currentAdmin, regenerateRecoveryCodes, requireAdmin, revokeSession,
 } from './auth.js';
-import { decrypt, encrypt } from './crypto.js';
+import { decrypt, encrypt, sha256 } from './crypto.js';
+import { sendEmail } from './email.js';
 import { getSettings, publicSettings, updateSettings } from './settings.js';
 import { fulfillOrder } from './fulfillment.js';
 import { pakasirPaymentUrl, pakasirTransactionDetail } from './pakasir.js';
@@ -30,7 +31,8 @@ const vercelHostname = process.env.VERCEL_ENV === 'production'
   ? (process.env.VERCEL_PROJECT_PRODUCTION_URL || process.env.VERCEL_URL)
   : process.env.VERCEL_URL;
 const vercelUrl = vercelHostname ? `https://${vercelHostname}` : '';
-const publicBaseUrl = String(process.env.PUBLIC_BASE_URL || vercelUrl || `http://localhost:${port}`).replace(/\/$/, '');
+const configuredBaseUrl = process.env.VERCEL_ENV === 'preview' ? '' : process.env.PUBLIC_BASE_URL;
+const publicBaseUrl = String(configuredBaseUrl || vercelUrl || `http://localhost:${port}`).replace(/\/$/, '');
 const PROVIDER_STATUSES = new Set(['pending', 'awaiting_confirmation', 'paid', 'expired', 'cancelled']);
 
 async function syncOrderFromProvider(orderId, { force = false } = {}) {
@@ -232,6 +234,12 @@ app.use('/api', (req, res, next) => {
 
 const loginLimiter = rateLimit({ windowMs: 15 * 60_000, limit: 8, standardHeaders: true, legacyHeaders: false });
 const publicWriteLimiter = rateLimit({ windowMs: 60_000, limit: 20, standardHeaders: true, legacyHeaders: false });
+const emailVerificationLimiter = rateLimit({
+  windowMs: 15 * 60_000,
+  limit: 8,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 function validEmail(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim());
@@ -303,8 +311,7 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
 });
 
 app.post('/api/auth/verify-2fa', loginLimiter, async (req, res) => {
-  const user = await completeTwoFactorChallenge(req, res, req.body.code);
-  res.json({ user });
+  res.json(await completeTwoFactorChallenge(req, res, req.body.code));
 });
 
 app.get('/api/auth/me', async (req, res) => {
@@ -331,6 +338,15 @@ app.post('/api/auth/change-password', requireAdmin, loginLimiter, async (req, re
   await query('DELETE FROM admin_sessions WHERE admin_id=$1', [req.admin.id]);
   res.clearCookie(SESSION_COOKIE, { path: '/' });
   res.json({ ok: true });
+});
+
+app.post('/api/auth/recovery-codes', requireAdmin, loginLimiter, async (req, res) => {
+  const recoveryCodes = await regenerateRecoveryCodes(
+    req.admin.id,
+    req.body.current_password,
+    req.body.totp_code,
+  );
+  res.json({ recovery_codes: recoveryCodes });
 });
 
 app.get('/api/accounts', async (req, res) => {
@@ -527,6 +543,73 @@ app.delete('/api/reviews/:id', requireAdmin, async (req, res) => {
   res.status(204).end();
 });
 
+app.post('/api/checkout/email-verification', emailVerificationLimiter, async (req, res) => {
+  const email = String(req.body.email || '').trim().toLowerCase();
+  if (!validEmail(email)) return res.status(400).json({ error: 'Alamat email tidak valid.' });
+
+  const code = String(crypto.randomInt(0, 1_000_000)).padStart(6, '0');
+  const codeHash = await bcrypt.hash(code, 12);
+  const expiresAt = new Date(Date.now() + 10 * 60_000);
+  await query(
+    `DELETE FROM email_verifications
+      WHERE email=$1 AND used_at IS NULL AND (expires_at <= now() OR verified_at IS NULL)`,
+    [email],
+  );
+  const inserted = await query(
+    `INSERT INTO email_verifications(email,code_hash,expires_at)
+     VALUES($1,$2,$3) RETURNING id`,
+    [email, codeHash, expiresAt],
+  );
+  const verificationId = inserted.rows[0].id;
+  try {
+    await sendEmail({
+      to: email,
+      subject: 'Kode verifikasi email AlebabaStore',
+      text: `Kode verifikasi Anda: ${code}\n\nKode ini berlaku 10 menit. Jangan berikan kode ini kepada siapa pun.`,
+      html: `<h2>Verifikasi email Anda</h2><p>Masukkan kode berikut untuk melanjutkan checkout:</p><p style="font-size:28px;font-weight:700;letter-spacing:6px">${code}</p><p>Kode berlaku 10 menit. Jangan berikan kode ini kepada siapa pun.</p>`,
+      idempotencyKey: `alebabastore-email-verification-${verificationId}`,
+    });
+  } catch (error) {
+    await query('DELETE FROM email_verifications WHERE id=$1', [verificationId]);
+    throw error;
+  }
+  res.status(201).json({ verification_id: verificationId, expires_in: 600 });
+});
+
+app.post('/api/checkout/email-verification/confirm', emailVerificationLimiter, async (req, res) => {
+  const verificationId = String(req.body.verification_id || '');
+  const code = String(req.body.code || '').replace(/\s/g, '');
+  if (!verificationId || !/^\d{6}$/.test(code)) {
+    return res.status(400).json({ error: 'Kode verifikasi 6 digit wajib diisi.' });
+  }
+  const result = await query(
+    `SELECT id,code_hash,attempts,expires_at,verified_at,used_at
+       FROM email_verifications WHERE id=$1`,
+    [verificationId],
+  );
+  const verification = result.rows[0];
+  if (!verification || verification.used_at || new Date(verification.expires_at) <= new Date()) {
+    return res.status(400).json({ error: 'Kode verifikasi tidak valid atau sudah kedaluwarsa.' });
+  }
+  if (verification.attempts >= 5) {
+    return res.status(429).json({ error: 'Terlalu banyak percobaan. Minta kode baru.' });
+  }
+  if (!(await bcrypt.compare(code, verification.code_hash))) {
+    await query('UPDATE email_verifications SET attempts=attempts+1 WHERE id=$1', [verificationId]);
+    return res.status(400).json({ error: 'Kode verifikasi salah.' });
+  }
+  const token = crypto.randomBytes(32).toString('base64url');
+  const updated = await query(
+    `UPDATE email_verifications
+        SET token_hash=$2,verified_at=now(),expires_at=now()+interval '30 minutes'
+      WHERE id=$1 AND used_at IS NULL AND attempts < 5
+      RETURNING id`,
+    [verificationId, sha256(token)],
+  );
+  if (!updated.rowCount) return res.status(409).json({ error: 'Verifikasi email tidak dapat digunakan.' });
+  res.json({ verification_token: token, expires_in: 1800 });
+});
+
 app.post('/api/checkout', publicWriteLimiter, async (req, res) => {
   const buyerEmail = String(req.body.buyer_email || '').trim().toLowerCase();
   const buyerName = String(req.body.buyer_name || '').trim();
@@ -539,8 +622,22 @@ app.post('/api/checkout', publicWriteLimiter, async (req, res) => {
   const client = await pool.connect();
   let account;
   let insertedId;
+  let verificationRecordId;
   try {
     await client.query('BEGIN');
+    const verification = await client.query(
+      `SELECT id FROM email_verifications
+        WHERE token_hash=$1 AND email=$2 AND verified_at IS NOT NULL
+          AND used_at IS NULL AND expires_at > now()
+        FOR UPDATE`,
+      [sha256(String(req.body.email_verification_token || '')), buyerEmail],
+    );
+    if (!verification.rowCount) {
+      const error = new Error('Email pembeli belum diverifikasi atau verifikasinya sudah kedaluwarsa.');
+      error.status = 403;
+      throw error;
+    }
+    verificationRecordId = verification.rows[0].id;
     const accountResult = await client.query(
       'SELECT * FROM game_accounts WHERE id=$1 AND sold=false AND archived_at IS NULL FOR UPDATE',
       [req.body.game_account_id],
@@ -584,6 +681,10 @@ app.post('/api/checkout', publicWriteLimiter, async (req, res) => {
       [orderId, account.id, buyerName, buyerEmail, String(req.body.buyer_phone || '').trim(), account.price, paymentProvider],
     );
     insertedId = inserted.rows[0].id;
+    await client.query(
+      'UPDATE email_verifications SET used_at=now() WHERE id=$1',
+      [verification.rows[0].id],
+    );
     await client.query('COMMIT');
   } catch (error) {
     await client.query('ROLLBACK');
@@ -623,6 +724,12 @@ app.post('/api/checkout', publicWriteLimiter, async (req, res) => {
     res.status(201).json({ order_id: orderId, payment_url: paymentUrl, expires_at: link.expires_at });
   } catch (error) {
     await query('DELETE FROM orders WHERE id=$1', [insertedId]);
+    if (verificationRecordId) {
+      await query(
+        'UPDATE email_verifications SET used_at=NULL WHERE id=$1',
+        [verificationRecordId],
+      );
+    }
     throw error;
   }
 });

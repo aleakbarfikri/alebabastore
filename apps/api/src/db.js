@@ -5,10 +5,17 @@ import path from 'node:path';
 
 const { Pool } = pg;
 
-const databaseUrl = process.env.DATABASE_URL_ALEBABASTORE || process.env.DATABASE_URL;
+const isVercelPreview = process.env.VERCEL_ENV === 'preview';
+const databaseUrl = isVercelPreview
+  ? process.env.DATABASE_URL_ALEBABASTORE_PREVIEW
+  : (process.env.DATABASE_URL_ALEBABASTORE || process.env.DATABASE_URL);
 
 if (!databaseUrl) {
-  throw new Error('DATABASE_URL_ALEBABASTORE atau DATABASE_URL wajib diisi dengan database Neon khusus AlebabaStore.');
+  throw new Error(
+    isVercelPreview
+      ? 'DATABASE_URL_ALEBABASTORE_PREVIEW wajib diisi dengan database Neon khusus Preview.'
+      : 'DATABASE_URL_ALEBABASTORE atau DATABASE_URL wajib diisi dengan database Neon khusus AlebabaStore.',
+  );
 }
 
 export const pool = new Pool({

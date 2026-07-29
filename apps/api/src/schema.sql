@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS admins (
   password_reset_version text,
   totp_secret text,
   totp_enabled_at timestamptz,
+  totp_recovery_codes text[] NOT NULL DEFAULT '{}',
   role text NOT NULL DEFAULT 'admin' CHECK (role = 'admin'),
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
@@ -15,6 +16,7 @@ CREATE TABLE IF NOT EXISTS admins (
 ALTER TABLE admins ADD COLUMN IF NOT EXISTS password_reset_version text;
 ALTER TABLE admins ADD COLUMN IF NOT EXISTS totp_secret text;
 ALTER TABLE admins ADD COLUMN IF NOT EXISTS totp_enabled_at timestamptz;
+ALTER TABLE admins ADD COLUMN IF NOT EXISTS totp_recovery_codes text[] NOT NULL DEFAULT '{}';
 
 CREATE TABLE IF NOT EXISTS admin_sessions (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -93,6 +95,23 @@ CREATE INDEX IF NOT EXISTS reviews_account_idx ON reviews(game_account_id);
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS provider_checked_at timestamptz;
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_provider text NOT NULL DEFAULT 'temanqris';
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS fulfillment_started_at timestamptz;
+
+CREATE TABLE IF NOT EXISTS email_verifications (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  email text NOT NULL,
+  code_hash text NOT NULL,
+  token_hash text UNIQUE,
+  attempts integer NOT NULL DEFAULT 0,
+  expires_at timestamptz NOT NULL,
+  verified_at timestamptz,
+  used_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS email_verifications_email_idx
+  ON email_verifications(email, created_at DESC);
+CREATE INDEX IF NOT EXISTS email_verifications_expires_idx
+  ON email_verifications(expires_at);
 
 CREATE TABLE IF NOT EXISTS app_settings (
   id smallint PRIMARY KEY DEFAULT 1 CHECK (id = 1),

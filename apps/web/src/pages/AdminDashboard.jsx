@@ -10,6 +10,7 @@ import GameAccountCard from '@/components/GameAccountCard.jsx';
 import StatisticsCard from '@/components/StatisticsCard.jsx'; import AdminPasswordChangeCard from '@/components/AdminPasswordChangeCard.jsx';
 import EditItemModal from '@/components/EditItemModal.jsx';
 import PaymentSettingsCard from '@/components/PaymentSettingsCard.jsx';
+import TwoFactorRecoveryCard from '@/components/TwoFactorRecoveryCard.jsx';
 import { useGameAccounts } from '@/hooks/useGameAccounts.js';
 import { useBuyerInquiries } from '@/hooks/useBuyerInquiries.js';
 import { useAuth } from '@/contexts/AuthContext.jsx';
@@ -307,7 +308,9 @@ const AdminDashboard = () => {
           </div>
 
           <PaymentSettingsCard />
-          <AdminPasswordChangeCard /> {/* Game Accounts Management */}
+          <AdminPasswordChangeCard />
+          <TwoFactorRecoveryCard />
+          {/* Game Accounts Management */}
           <section className="mb-16">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
               <div className="flex items-center gap-4">

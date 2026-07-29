@@ -2,12 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { Helmet } from 'react-helmet';
 import { useSearchParams } from '@/lib/router.jsx';
 import { motion } from 'framer-motion';
-import { CheckCircle, LockKeyhole } from 'lucide-react';
+import { CheckCircle, LockKeyhole, MailCheck } from 'lucide-react';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import { useGameAccounts } from '@/hooks/useGameAccounts';
 import { useBuyerInquiries } from '@/hooks/useBuyerInquiries';
 import { toast } from 'sonner';
+import { api } from '@/lib/apiClient.js';
 
 const UploadProofPage = () => {
   const [searchParams] = useSearchParams();
@@ -20,6 +21,12 @@ const UploadProofPage = () => {
     buyer_email: '',
     buyer_phone: '',
     game_account_id: searchParams.get('account') || ''
+  });
+  const [emailVerification, setEmailVerification] = useState({
+    id: '',
+    code: '',
+    token: '',
+    loading: false,
   });
 
   useEffect(() => {
@@ -41,6 +48,59 @@ const UploadProofPage = () => {
       ...formData,
       [e.target.name]: e.target.value
     });
+    if (e.target.name === 'buyer_email') {
+      setEmailVerification({ id: '', code: '', token: '', loading: false });
+    }
+  };
+
+  const sendVerificationCode = async () => {
+    if (!formData.buyer_email) {
+      toast.error('Masukkan email pembeli terlebih dahulu.');
+      return;
+    }
+    setEmailVerification((current) => ({ ...current, loading: true }));
+    try {
+      const result = await api('/checkout/email-verification', {
+        method: 'POST',
+        body: JSON.stringify({ email: formData.buyer_email }),
+      });
+      setEmailVerification({
+        id: result.verification_id,
+        code: '',
+        token: '',
+        loading: false,
+      });
+      toast.success('Kode verifikasi sudah dikirim ke email.');
+    } catch (error) {
+      setEmailVerification((current) => ({ ...current, loading: false }));
+      toast.error(error.message || 'Gagal mengirim kode verifikasi.');
+    }
+  };
+
+  const confirmVerificationCode = async () => {
+    if (!/^\d{6}$/.test(emailVerification.code)) {
+      toast.error('Masukkan kode verifikasi 6 digit.');
+      return;
+    }
+    setEmailVerification((current) => ({ ...current, loading: true }));
+    try {
+      const result = await api('/checkout/email-verification/confirm', {
+        method: 'POST',
+        body: JSON.stringify({
+          verification_id: emailVerification.id,
+          code: emailVerification.code,
+        }),
+      });
+      setEmailVerification((current) => ({
+        ...current,
+        token: result.verification_token,
+        loading: false,
+      }));
+      toast.success('Email berhasil diverifikasi.');
+    } catch (error) {
+      setEmailVerification((current) => ({ ...current, loading: false }));
+      toast.error(error.message || 'Kode verifikasi tidak valid.');
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -52,7 +112,14 @@ const UploadProofPage = () => {
     }
 
     try {
-      const checkout = await submitInquiry(formData);
+      if (!emailVerification.token) {
+        toast.error('Verifikasi email sebelum melanjutkan pembayaran.');
+        return;
+      }
+      const checkout = await submitInquiry({
+        ...formData,
+        email_verification_token: emailVerification.token,
+      });
       toast.success('Link pembayaran berhasil dibuat');
       window.location.assign(checkout.payment_url);
     } catch (error) {
@@ -121,6 +188,56 @@ const UploadProofPage = () => {
                   className="w-full px-4 py-3 bg-background border border-border rounded-xl text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary transition-all"
                   placeholder="email@example.com"
                 />
+                <div className="mt-3">
+                  {emailVerification.token ? (
+                    <div className="flex items-center gap-2 text-sm font-semibold text-emerald-500">
+                      <MailCheck className="w-5 h-5" />
+                      Email sudah terverifikasi
+                    </div>
+                  ) : emailVerification.id ? (
+                    <div className="flex flex-col sm:flex-row gap-3">
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]{6}"
+                        maxLength={6}
+                        value={emailVerification.code}
+                        onChange={(event) => setEmailVerification((current) => ({
+                          ...current,
+                          code: event.target.value.replace(/\D/g, ''),
+                        }))}
+                        placeholder="Kode 6 digit dari email"
+                        autoComplete="one-time-code"
+                        className="flex-1 px-4 py-3 bg-background border border-border rounded-xl text-foreground"
+                      />
+                      <button
+                        type="button"
+                        onClick={confirmVerificationCode}
+                        disabled={emailVerification.loading}
+                        className="px-5 py-3 rounded-xl bg-primary text-primary-foreground font-semibold disabled:opacity-50"
+                      >
+                        {emailVerification.loading ? 'Memeriksa...' : 'Verifikasi'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={sendVerificationCode}
+                        disabled={emailVerification.loading}
+                        className="px-4 py-3 text-sm font-semibold text-primary"
+                      >
+                        Kirim ulang
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={sendVerificationCode}
+                      disabled={emailVerification.loading}
+                      className="px-5 py-3 rounded-xl border border-primary text-primary font-semibold disabled:opacity-50"
+                    >
+                      {emailVerification.loading ? 'Mengirim...' : 'Kirim kode verifikasi'}
+                    </button>
+                  )}
+                </div>
               </div>
 
               <div>
@@ -165,13 +282,13 @@ const UploadProofPage = () => {
               <div className="flex items-start gap-3 rounded-xl border border-primary/20 bg-primary/5 p-4">
                 <LockKeyhole className="w-5 h-5 text-primary mt-0.5 shrink-0" />
                 <p className="text-sm text-muted-foreground">
-                  Email wajib aktif. Kredensial produk hanya dikirim setelah pembayaran QRIS terverifikasi otomatis.
+                  Email wajib diverifikasi. Kredensial produk hanya dikirim setelah pembayaran QRIS terverifikasi otomatis.
                 </p>
               </div>
 
               <button
                 type="submit"
-                disabled={loading || availableAccounts.length === 0}
+                disabled={loading || availableAccounts.length === 0 || !emailVerification.token}
                 className="w-full px-8 py-4 bg-primary text-primary-foreground rounded-xl font-semibold hover:bg-primary/90 transition-all gaming-glow flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {loading ? (
