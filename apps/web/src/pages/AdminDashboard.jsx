@@ -50,6 +50,11 @@ const AdminDashboard = () => {
   const [accountToDelete, setAccountToDelete] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
+  // Status Confirmation State
+  const [accountToUpdateStatus, setAccountToUpdateStatus] = useState(null);
+  const [statusPassword, setStatusPassword] = useState('');
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+
   const [formData, setFormData] = useState({
     title: '',
     game_name: 'Mobile Legends',
@@ -190,21 +195,39 @@ const AdminDashboard = () => {
     setIsEditModalOpen(true);
   };
 
-  const handleToggleSold = async (account) => {
+  const closeStatusDialog = () => {
+    if (isUpdatingStatus) return;
+    setAccountToUpdateStatus(null);
+    setStatusPassword('');
+  };
+
+  const handleToggleSold = (account) => {
+    setStatusPassword('');
+    setAccountToUpdateStatus(account);
+  };
+
+  const confirmToggleSold = async (event) => {
+    event.preventDefault();
+    if (!accountToUpdateStatus || !statusPassword) return;
+
+    const newSoldStatus = !accountToUpdateStatus.sold;
+    setIsUpdatingStatus(true);
     try {
-      const newSoldStatus = !account.sold;
-      await api(`/accounts/${encodeURIComponent(account.id)}`, {
-        method: 'PATCH',
-        body: (() => {
-          const data = new FormData();
-          data.append('sold', String(newSoldStatus));
-          return data;
-        })(),
+      await api(`/admin/accounts/${encodeURIComponent(accountToUpdateStatus.id)}/status`, {
+        method: 'POST',
+        body: JSON.stringify({
+          sold: newSoldStatus,
+          password: statusPassword,
+        }),
       });
-      toast.success(`Account marked as ${newSoldStatus ? 'SOLD' : 'AVAILABLE'}`);
-      loadDashboardData();
+      toast.success(`Akun berhasil diubah menjadi ${newSoldStatus ? 'SOLD' : 'AVAILABLE'}.`);
+      setAccountToUpdateStatus(null);
+      setStatusPassword('');
+      await loadDashboardData();
     } catch (error) {
-      toast.error('Failed to update status.');
+      toast.error(error.message || 'Gagal mengubah status akun.');
+    } finally {
+      setIsUpdatingStatus(false);
     }
   };
 
@@ -589,6 +612,64 @@ const AdminDashboard = () => {
                   {isDeleting ? 'Deleting...' : 'Delete Account'}
                 </AlertDialogAction>
               </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+
+          {/* Account Status Confirmation Dialog */}
+          <AlertDialog
+            open={!!accountToUpdateStatus}
+            onOpenChange={(open) => !open && closeStatusDialog()}
+          >
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>
+                  Ubah status menjadi {accountToUpdateStatus?.sold ? 'AVAILABLE' : 'SOLD'}?
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                  Masukkan password admin untuk mengonfirmasi perubahan status akun
+                  <strong className="text-foreground">
+                    {' '}{accountToUpdateStatus?.account_code || accountToUpdateStatus?.title}
+                  </strong>.
+                  Akun yang sudah dibayar tidak dapat diaktifkan kembali.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <form onSubmit={confirmToggleSold} className="space-y-4">
+                <div className="space-y-2">
+                  <label htmlFor="status-admin-password" className="text-sm font-medium text-foreground">
+                    Password Admin
+                  </label>
+                  <input
+                    id="status-admin-password"
+                    type="password"
+                    autoComplete="current-password"
+                    value={statusPassword}
+                    onChange={(event) => setStatusPassword(event.target.value)}
+                    disabled={isUpdatingStatus}
+                    autoFocus
+                    required
+                    className="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-white placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                    placeholder="Masukkan password admin"
+                  />
+                </div>
+                <AlertDialogFooter>
+                  <AlertDialogCancel
+                    type="button"
+                    disabled={isUpdatingStatus}
+                    onClick={closeStatusDialog}
+                  >
+                    Batal
+                  </AlertDialogCancel>
+                  <button
+                    type="submit"
+                    disabled={isUpdatingStatus || !statusPassword}
+                    className="inline-flex h-10 items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50"
+                  >
+                    {isUpdatingStatus
+                      ? 'Memverifikasi...'
+                      : `Konfirmasi ${accountToUpdateStatus?.sold ? 'AVAILABLE' : 'SOLD'}`}
+                  </button>
+                </AlertDialogFooter>
+              </form>
             </AlertDialogContent>
           </AlertDialog>
 

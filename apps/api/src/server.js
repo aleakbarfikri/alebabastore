@@ -233,6 +233,13 @@ app.use('/api', (req, res, next) => {
 });
 
 const loginLimiter = rateLimit({ windowMs: 15 * 60_000, limit: 8, standardHeaders: true, legacyHeaders: false });
+const adminConfirmationLimiter = rateLimit({
+  windowMs: 15 * 60_000,
+  limit: 6,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+});
 const publicWriteLimiter = rateLimit({ windowMs: 60_000, limit: 20, standardHeaders: true, legacyHeaders: false });
 const emailVerificationLimiter = rateLimit({
   windowMs: 15 * 60_000,
@@ -435,21 +442,95 @@ app.post('/api/accounts', requireAdmin, upload.array('images', 10), async (req, 
   }
 });
 
+app.post(
+  '/api/admin/accounts/:id/status',
+  requireAdmin,
+  adminConfirmationLimiter,
+  async (req, res) => {
+    const password = String(req.body.password || '');
+    const sold = req.body.sold;
+    if (!password || typeof sold !== 'boolean') {
+      return res.status(400).json({ error: 'Password admin dan status akun wajib diisi.' });
+    }
+
+    const adminResult = await query('SELECT password_hash FROM admins WHERE id=$1', [req.admin.id]);
+    const passwordMatches = adminResult.rowCount
+      && await bcrypt.compare(password, adminResult.rows[0].password_hash);
+    if (!passwordMatches) {
+      return res.status(401).json({ error: 'Password admin salah.' });
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const accountResult = await client.query(
+        `SELECT id,sold FROM game_accounts
+          WHERE id=$1 AND archived_at IS NULL
+          FOR UPDATE`,
+        [req.params.id],
+      );
+      const account = accountResult.rows[0];
+      if (!account) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error: 'Akun tidak ditemukan.' });
+      }
+
+      if (!sold && account.sold) {
+        const paidOrder = await client.query(
+          `SELECT 1 FROM orders
+            WHERE game_account_id=$1 AND status='paid'
+            LIMIT 1`,
+          [req.params.id],
+        );
+        if (paidOrder.rowCount) {
+          await client.query('ROLLBACK');
+          return res.status(409).json({
+            error: 'Akun telah memiliki pembayaran lunas dan tidak dapat diaktifkan kembali.',
+          });
+        }
+      }
+
+      if (sold && !account.sold) {
+        const activeOrder = await client.query(
+          `SELECT 1 FROM orders
+            WHERE game_account_id=$1
+              AND status IN ('pending','awaiting_confirmation')
+              AND created_at > now() - interval '48 hours'
+            LIMIT 1`,
+          [req.params.id],
+        );
+        if (activeOrder.rowCount) {
+          await client.query('ROLLBACK');
+          return res.status(409).json({
+            error: 'Akun sedang dipesan dan menunggu pembayaran. Status tidak dapat diubah.',
+          });
+        }
+      }
+
+      await client.query(
+        'UPDATE game_accounts SET sold=$2,updated_at=now() WHERE id=$1',
+        [req.params.id, sold],
+      );
+      await client.query('COMMIT');
+      return res.json((await fetchAccounts({ id: req.params.id, admin: true }))[0]);
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  },
+);
+
 app.patch('/api/accounts/:id', requireAdmin, upload.array('images', 10), async (req, res) => {
   const current = await query('SELECT * FROM game_accounts WHERE id=$1', [req.params.id]);
   if (!current.rowCount) return res.status(404).json({ error: 'Akun tidak ditemukan.' });
   const row = current.rows[0];
   const requestedSold = req.body.sold === undefined ? row.sold : String(req.body.sold) === 'true';
-  if (!requestedSold && row.sold) {
-    const paidOrder = await query(
-      'SELECT 1 FROM orders WHERE game_account_id=$1 AND status=$2 LIMIT 1',
-      [req.params.id, 'paid'],
-    );
-    if (paidOrder.rowCount) {
-      return res.status(409).json({
-        error: 'Akun telah memiliki pembayaran lunas dan tidak dapat diaktifkan kembali.',
-      });
-    }
+  if (req.body.sold !== undefined && requestedSold !== row.sold) {
+    return res.status(400).json({
+      error: 'Perubahan status harus dikonfirmasi dengan password admin.',
+    });
   }
   const credentials = deliveryCredentials(req.body, false) || row.delivery_credentials;
   const client = await pool.connect();
@@ -463,7 +544,7 @@ app.patch('/api/accounts/:id', requireAdmin, upload.array('images', 10), async (
         Number(req.body.level || row.level), req.body.rank ?? row.rank, req.body.description ?? row.description,
         Number(req.body.price ?? row.price),
         req.body.townhall_level === undefined ? row.townhall_level : (req.body.townhall_level ? Number(req.body.townhall_level) : null),
-        credentials, requestedSold,
+        credentials, row.sold,
       ],
     );
     await saveImages(client, req.params.id, req.files, true);
