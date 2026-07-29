@@ -10,7 +10,8 @@ import sharp from 'sharp';
 import bcrypt from 'bcryptjs';
 import { initDatabase, pool, query } from './db.js';
 import {
-  SESSION_COOKIE, bootstrapAdmin, createSession, currentAdmin, requireAdmin, revokeSession,
+  SESSION_COOKIE, beginTwoFactorChallenge, bootstrapAdmin, completeTwoFactorChallenge,
+  currentAdmin, requireAdmin, revokeSession,
 } from './auth.js';
 import { decrypt, encrypt } from './crypto.js';
 import { getSettings, publicSettings, updateSettings } from './settings.js';
@@ -34,7 +35,8 @@ const PROVIDER_STATUSES = new Set(['pending', 'awaiting_confirmation', 'paid', '
 
 async function syncOrderFromProvider(orderId, { force = false } = {}) {
   const localResult = await query(
-    `SELECT order_id,status,payment_provider,amount,provider_checked_at FROM orders WHERE order_id=$1`,
+    `SELECT order_id,status,payment_provider,amount,provider_checked_at,fulfilled_at
+       FROM orders WHERE order_id=$1`,
     [orderId],
   );
   const localOrder = localResult.rows[0];
@@ -46,7 +48,12 @@ async function syncOrderFromProvider(orderId, { force = false } = {}) {
   if (localOrder.payment_provider === 'pakasir') {
     const checkedRecently = localOrder.provider_checked_at
       && Date.now() - new Date(localOrder.provider_checked_at).getTime() < 15 * 60_000;
-    if (!force && (checkedRecently || localOrder.status !== 'pending')) return localOrder;
+    if (!force && (checkedRecently || localOrder.status !== 'pending')) {
+      if (localOrder.status === 'paid' && !localOrder.fulfilled_at) {
+        fulfillOrder(orderId).catch((error) => console.error('[fulfillment]', orderId, error.message));
+      }
+      return localOrder;
+    }
     const { data, transaction } = await pakasirTransactionDetail({
       orderId,
       amount: localOrder.amount,
@@ -74,7 +81,12 @@ async function syncOrderFromProvider(orderId, { force = false } = {}) {
 
   const checkedRecently = localOrder.provider_checked_at
     && Date.now() - new Date(localOrder.provider_checked_at).getTime() < 15 * 60_000;
-  if (!force && (checkedRecently || localOrder.status !== 'pending')) return localOrder;
+  if (!force && (checkedRecently || localOrder.status !== 'pending')) {
+    if (localOrder.status === 'paid' && !localOrder.fulfilled_at) {
+      fulfillOrder(orderId).catch((error) => console.error('[fulfillment]', orderId, error.message));
+    }
+    return localOrder;
+  }
 
   const result = await temanqris(`/orders/${encodeURIComponent(orderId)}`);
   const providerOrder = result.order || result.data || result;
@@ -103,7 +115,27 @@ async function syncOrderFromProvider(orderId, { force = false } = {}) {
 }
 
 app.set('trust proxy', 1);
-app.use(helmet({ contentSecurityPolicy: false, crossOriginResourcePolicy: { policy: 'same-site' } }));
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      baseUri: ["'self'"],
+      connectSrc: ["'self'"],
+      fontSrc: ["'self'", 'data:', 'https://fonts.gstatic.com'],
+      formAction: ["'self'"],
+      frameAncestors: ["'none'"],
+      imgSrc: [
+        "'self'", 'data:', 'blob:',
+        'https://horizons-cdn.hostinger.com',
+        'https://images.unsplash.com',
+      ],
+      objectSrc: ["'none'"],
+      scriptSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+    },
+  },
+  crossOriginResourcePolicy: { policy: 'same-site' },
+}));
 app.use(cookieParser());
 
 // Raw body is mandatory for HMAC verification and must be registered before express.json().
@@ -147,14 +179,20 @@ app.post('/api/webhooks/pakasir', async (req, res, next) => {
     const orderId = String(req.body?.order_id || '');
     if (!orderId) return res.status(400).json({ error: 'order_id tidak tersedia.' });
     const result = await query(
-      `SELECT order_id,amount,status,payment_provider FROM orders WHERE order_id=$1`,
+      `SELECT order_id,amount,status,payment_provider,fulfilled_at FROM orders WHERE order_id=$1`,
       [orderId],
     );
     const order = result.rows[0];
     if (!order || order.payment_provider !== 'pakasir') {
       return res.status(404).json({ error: 'Order Pakasir tidak ditemukan.' });
     }
-    if (order.status === 'paid') return res.json({ success: true });
+    if (order.status === 'paid') {
+      res.json({ success: true });
+      if (!order.fulfilled_at) {
+        fulfillOrder(orderId).catch((error) => console.error('[fulfillment]', orderId, error.message));
+      }
+      return;
+    }
 
     const { data, transaction } = await pakasirTransactionDetail({
       orderId,
@@ -261,8 +299,12 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
     return res.status(401).json({ error: 'Username atau password salah.' });
   }
   await query('DELETE FROM admin_sessions WHERE expires_at <= now()');
-  await createSession(admin.id, res);
-  res.json({ user: { id: admin.id, username: admin.username, role: admin.role } });
+  res.json(beginTwoFactorChallenge(admin, res));
+});
+
+app.post('/api/auth/verify-2fa', loginLimiter, async (req, res) => {
+  const user = await completeTwoFactorChallenge(req, res, req.body.code);
+  res.json({ user });
 });
 
 app.get('/api/auth/me', async (req, res) => {

@@ -5,12 +5,16 @@ CREATE TABLE IF NOT EXISTS admins (
   username text UNIQUE NOT NULL,
   password_hash text NOT NULL,
   password_reset_version text,
+  totp_secret text,
+  totp_enabled_at timestamptz,
   role text NOT NULL DEFAULT 'admin' CHECK (role = 'admin'),
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
 ALTER TABLE admins ADD COLUMN IF NOT EXISTS password_reset_version text;
+ALTER TABLE admins ADD COLUMN IF NOT EXISTS totp_secret text;
+ALTER TABLE admins ADD COLUMN IF NOT EXISTS totp_enabled_at timestamptz;
 
 CREATE TABLE IF NOT EXISTS admin_sessions (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -76,6 +80,7 @@ CREATE TABLE IF NOT EXISTS orders (
   provider_checked_at timestamptz,
   paid_at timestamptz,
   fulfilled_at timestamptz,
+  fulfillment_started_at timestamptz,
   delivery_error text,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
@@ -87,6 +92,7 @@ CREATE INDEX IF NOT EXISTS reviews_account_idx ON reviews(game_account_id);
 
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS provider_checked_at timestamptz;
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_provider text NOT NULL DEFAULT 'temanqris';
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS fulfillment_started_at timestamptz;
 
 CREATE TABLE IF NOT EXISTS app_settings (
   id smallint PRIMARY KEY DEFAULT 1 CHECK (id = 1),

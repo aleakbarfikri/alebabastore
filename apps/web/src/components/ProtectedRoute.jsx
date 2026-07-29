@@ -1,5 +1,5 @@
 import React from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate } from '@/lib/router.jsx';
 import { useAuth } from '@/contexts/AuthContext';
 import { Shield } from 'lucide-react';
 

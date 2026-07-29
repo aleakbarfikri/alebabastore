@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Helmet } from 'react-helmet';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, Link, useNavigate } from '@/lib/router.jsx';
 import { motion } from 'framer-motion';
 import { ArrowLeft, CreditCard, TrendingUp, Shield, Zap, Castle, Copy, AlertTriangle } from 'lucide-react';
 import Header from '@/components/Header.jsx';

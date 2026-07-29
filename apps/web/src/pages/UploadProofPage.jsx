@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Helmet } from 'react-helmet';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from '@/lib/router.jsx';
 import { motion } from 'framer-motion';
 import { CheckCircle, LockKeyhole } from 'lucide-react';
 import Header from '@/components/Header';

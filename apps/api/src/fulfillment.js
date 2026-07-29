@@ -21,13 +21,24 @@ export async function fulfillOrder(orderId, { forceResend = false } = {}) {
     );
     order = locked.rows[0];
     if (!order) throw new Error('Order tidak ditemukan.');
+    if (order.status !== 'paid') {
+      const error = new Error('Kredensial hanya dapat dikirim setelah pembayaran berstatus paid.');
+      error.status = 409;
+      throw error;
+    }
     if (order.fulfilled_at) {
       await client.query('COMMIT');
       return { alreadyFulfilled: true };
     }
+    const fulfillmentInProgress = order.fulfillment_started_at
+      && Date.now() - new Date(order.fulfillment_started_at).getTime() < 10 * 60_000;
+    if (fulfillmentInProgress) {
+      await client.query('COMMIT');
+      return { alreadyProcessing: true };
+    }
     if (!order.delivery_credentials) throw new Error('Kredensial produk belum diisi oleh admin.');
     await client.query(
-      `UPDATE orders SET status='paid', paid_at=COALESCE(paid_at, now()), updated_at=now() WHERE id=$1`,
+      'UPDATE orders SET fulfillment_started_at=now(),updated_at=now() WHERE id=$1',
       [order.id],
     );
     await client.query('UPDATE game_accounts SET sold=true, updated_at=now() WHERE id=$1', [order.game_account_id]);
@@ -88,13 +99,14 @@ export async function fulfillOrder(orderId, { forceResend = false } = {}) {
       throw new Error(payload.message || payload.error || `Resend gagal (${response.status}).`);
     }
     await query(
-      `UPDATE orders SET fulfilled_at=now(), delivery_error=NULL, updated_at=now() WHERE id=$1`,
+      `UPDATE orders SET fulfilled_at=now(),fulfillment_started_at=NULL,
+       delivery_error=NULL,updated_at=now() WHERE id=$1`,
       [order.id],
     );
     return { delivered: true, provider: 'resend' };
   } catch (error) {
     await query(
-      `UPDATE orders SET delivery_error=$2, updated_at=now() WHERE id=$1`,
+      `UPDATE orders SET fulfillment_started_at=NULL,delivery_error=$2,updated_at=now() WHERE id=$1`,
       [order.id, String(error.message).slice(0, 1000)],
     );
     throw error;

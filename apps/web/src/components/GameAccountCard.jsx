@@ -1,5 +1,5 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from '@/lib/router.jsx';
 import { imageUrl } from '@/lib/apiClient.js';
 import { Gamepad2, TrendingUp, Trash2, Edit, Tag, Castle, Copy } from 'lucide-react';
 import { motion } from 'framer-motion';

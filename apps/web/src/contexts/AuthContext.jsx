@@ -24,12 +24,21 @@ export const AuthProvider = ({ children }) => {
         method: 'POST',
         body: JSON.stringify({ username, password }),
       });
-      setCurrentUser(authData.user);
+      if (authData.user) setCurrentUser(authData.user);
       return authData;
     } catch (error) {
       console.error('[AuthContext] Login failed:', error);
       throw error;
     }
+  }, []);
+
+  const verifyTwoFactor = useCallback(async (code) => {
+    const authData = await api('/auth/verify-2fa', {
+      method: 'POST',
+      body: JSON.stringify({ code }),
+    });
+    setCurrentUser(authData.user);
+    return authData;
   }, []);
 
   const adminLogout = useCallback(async () => {
@@ -56,6 +65,7 @@ export const AuthProvider = ({ children }) => {
       value={{ 
         currentUser, 
         adminLogin, 
+        verifyTwoFactor,
         adminLogout, 
         getCurrentUser, 
         isAdmin, 

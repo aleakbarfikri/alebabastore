@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Helmet } from 'react-helmet';
-import { Link } from 'react-router-dom';
+import { Link } from '@/lib/router.jsx';
 import { motion } from 'framer-motion';
 import { Shield, Zap, TrendingUp, ArrowRight } from 'lucide-react';
 import { toast } from 'sonner';
