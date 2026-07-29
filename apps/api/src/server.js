@@ -439,8 +439,11 @@ app.use((error, _req, res, _next) => {
   if (error.code === '23505') return res.status(409).json({ error: 'Data unik sudah digunakan.' });
   if (error.code === '23503') return res.status(409).json({ error: 'Data masih digunakan oleh transaksi lain.' });
   if (error instanceof multer.MulterError) return res.status(400).json({ error: error.message });
-  res.status(error.status || 500).json({
-    error: process.env.NODE_ENV === 'production' ? 'Terjadi kesalahan pada server.' : error.message,
+  const status = Number(error.status) || 500;
+  res.status(status).json({
+    error: status < 500 || process.env.NODE_ENV !== 'production'
+      ? error.message
+      : 'Terjadi kesalahan pada server.',
   });
 });
 
