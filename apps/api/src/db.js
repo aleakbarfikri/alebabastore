@@ -5,12 +5,14 @@ import path from 'node:path';
 
 const { Pool } = pg;
 
-if (!process.env.DATABASE_URL_ALEBABASTORE) {
-  throw new Error('DATABASE_URL_ALEBABASTORE wajib diisi dengan connection string database Neon khusus AlebabaStore.');
+const databaseUrl = process.env.DATABASE_URL_ALEBABASTORE || process.env.DATABASE_URL;
+
+if (!databaseUrl) {
+  throw new Error('DATABASE_URL_ALEBABASTORE atau DATABASE_URL wajib diisi dengan database Neon khusus AlebabaStore.');
 }
 
 export const pool = new Pool({
-  connectionString: process.env.DATABASE_URL_ALEBABASTORE,
+  connectionString: databaseUrl,
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : undefined,
   max: Number(process.env.DB_POOL_SIZE || 10),
   idleTimeoutMillis: 30_000,

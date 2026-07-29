@@ -24,7 +24,8 @@ const upload = multer({
   fileFilter: (_req, file, cb) => cb(null, /^image\/(jpeg|png|webp|avif|heic|heif)$/i.test(file.mimetype)),
 });
 const port = Number(process.env.PORT || 8080);
-const publicBaseUrl = String(process.env.PUBLIC_BASE_URL || `http://localhost:${port}`).replace(/\/$/, '');
+const vercelUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : '';
+const publicBaseUrl = String(process.env.PUBLIC_BASE_URL || vercelUrl || `http://localhost:${port}`).replace(/\/$/, '');
 
 app.set('trust proxy', 1);
 app.use(helmet({ contentSecurityPolicy: false, crossOriginResourcePolicy: { policy: 'same-site' } }));
@@ -74,6 +75,9 @@ app.use('/api', (req, res, next) => {
     'http://localhost:3000',
     'http://127.0.0.1:3000',
   ]);
+  for (const hostname of [process.env.VERCEL_URL, process.env.VERCEL_BRANCH_URL, process.env.VERCEL_PROJECT_PRODUCTION_URL]) {
+    if (hostname) allowed.add(`https://${hostname}`);
+  }
   if (origin && !allowed.has(origin)) return res.status(403).json({ error: 'Origin request tidak diizinkan.' });
   next();
 });
@@ -440,18 +444,25 @@ app.use((error, _req, res, _next) => {
   });
 });
 
-const here = path.dirname(fileURLToPath(import.meta.url));
-const distPath = path.resolve(here, '../../../dist/apps/web');
-app.use(express.static(distPath));
-app.get(/.*/, (_req, res) => res.sendFile(path.join(distPath, 'index.html')));
-
-await initDatabase();
-await bootstrapAdmin();
-app.listen(port, () => console.info(`AlebabaStore API listening on :${port}`));
-
-async function shutdown() {
-  await pool.end();
-  process.exit(0);
+if (!process.env.VERCEL) {
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const distPath = path.resolve(here, '../../../dist/apps/web');
+  app.use(express.static(distPath));
+  app.get(/.*/, (_req, res) => res.sendFile(path.join(distPath, 'index.html')));
 }
-process.on('SIGTERM', shutdown);
-process.on('SIGINT', shutdown);
+
+const ready = initDatabase().then(bootstrapAdmin);
+await ready;
+
+if (!process.env.VERCEL) {
+  app.listen(port, () => console.info(`AlebabaStore API listening on :${port}`));
+
+  async function shutdown() {
+    await pool.end();
+    process.exit(0);
+  }
+  process.on('SIGTERM', shutdown);
+  process.on('SIGINT', shutdown);
+}
+
+export default app;

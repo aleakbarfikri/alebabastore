@@ -22,6 +22,15 @@ mencegah database tertukar saat deployment.
 6. Di dashboard admin, isi API key serta webhook secret TemanQRIS dan konfigurasi
    SMTP. Nilai rahasia dienkripsi dan tidak ditampilkan kembali.
 
+### Deployment Vercel
+
+Project Vercel dapat tetap menggunakan Root Directory `apps/web`. File catch-all
+di `apps/web/api/[...path].js` menerbitkan backend sebagai Serverless Function,
+sementara Vite tetap menghasilkan frontend statis. Tambahkan semua environment
+variable dari `.env.example` ke Production dan Preview sebelum redeploy. Neon
+Integration milik Vercel biasanya menyediakan `DATABASE_URL`; backend menerima
+nama tersebut selama database yang ditautkan memang khusus AlebabaStore.
+
 Untuk mengimpor akun dan review dari backup PocketBase lama, set
 `LEGACY_POCKETBASE_DB_PATH=/path/ke/data.db` lalu jalankan
 `npm run db:migrate:pocketbase`. Gambar lama perlu diunggah ulang, dan setiap akun
