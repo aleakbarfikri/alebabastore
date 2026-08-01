@@ -8,6 +8,7 @@ import rateLimit from 'express-rate-limit';
 import multer from 'multer';
 import sharp from 'sharp';
 import bcrypt from 'bcryptjs';
+import QRCode from 'qrcode';
 import { initDatabase, pool, query } from './db.js';
 import {
   SESSION_COOKIE, beginTwoFactorChallenge, bootstrapAdmin, completeTwoFactorChallenge,
@@ -17,7 +18,7 @@ import { decrypt, encrypt, sha256 } from './crypto.js';
 import { sendEmail } from './email.js';
 import { getSettings, publicSettings, updateSettings } from './settings.js';
 import { fulfillOrder } from './fulfillment.js';
-import { pakasirPaymentUrl, pakasirTransactionDetail } from './pakasir.js';
+import { pakasirCancelTransaction, pakasirCreateTransaction, pakasirTransactionDetail } from './pakasir.js';
 import { temanqris, verifyWebhook } from './temanqris.js';
 
 const app = express();
@@ -52,7 +53,7 @@ async function syncOrderFromProvider(orderId, { force = false } = {}) {
   }
   if (localOrder.payment_provider === 'pakasir') {
     const checkedRecently = localOrder.provider_checked_at
-      && Date.now() - new Date(localOrder.provider_checked_at).getTime() < 15 * 60_000;
+      && Date.now() - new Date(localOrder.provider_checked_at).getTime() < 15_000;
     if (!force && (checkedRecently || localOrder.status !== 'pending')) {
       if (localOrder.status === 'paid' && !localOrder.fulfilled_at) {
         fulfillOrder(orderId).catch((error) => console.error('[fulfillment]', orderId, error.message));
@@ -66,8 +67,8 @@ async function syncOrderFromProvider(orderId, { force = false } = {}) {
     const pakasirStatus = String(transaction.status || '').toLowerCase();
     const nextStatus = pakasirStatus === 'completed'
       ? 'paid'
-      : ['expired', 'cancelled'].includes(pakasirStatus)
-        ? pakasirStatus
+      : ['expired', 'cancelled', 'canceled'].includes(pakasirStatus)
+        ? (pakasirStatus === 'canceled' ? 'cancelled' : pakasirStatus)
         : localOrder.status;
     const updated = await query(
       `UPDATE orders SET
@@ -117,6 +118,100 @@ async function syncOrderFromProvider(orderId, { force = false } = {}) {
     fulfillOrder(orderId).catch((error) => console.error('[fulfillment]', orderId, error.message));
   }
   return updated.rows[0];
+}
+
+async function expirePakasirOrder(order) {
+  let providerDetail;
+  try {
+    providerDetail = await pakasirTransactionDetail({
+      orderId: order.order_id,
+      amount: order.amount,
+    });
+    const providerStatus = String(providerDetail.transaction.status || '').toLowerCase();
+    const paymentMethod = String(providerDetail.transaction.payment_method || '').toLowerCase();
+    if (providerStatus === 'completed' && paymentMethod === 'qris') {
+      const paid = await query(
+        `UPDATE orders SET status='paid',paid_at=COALESCE(paid_at,$2::timestamptz,now()),
+           provider_payload=$3,provider_checked_at=now(),updated_at=now()
+         WHERE order_id=$1 AND status<>'paid'
+         RETURNING order_id`,
+        [order.order_id, providerDetail.transaction.completed_at || null, providerDetail.data],
+      );
+      if (paid.rowCount) {
+        fulfillOrder(order.order_id).catch((error) => (
+          console.error('[fulfillment]', order.order_id, error.message)
+        ));
+      }
+      return { order_id: order.order_id, status: 'paid' };
+    }
+    if (['cancelled', 'canceled', 'expired'].includes(providerStatus)) {
+      const localStatus = providerStatus === 'canceled' ? 'cancelled' : providerStatus;
+      await query(
+        `UPDATE orders SET status=$2,provider_payload=$3,provider_checked_at=now(),updated_at=now()
+          WHERE order_id=$1 AND status='pending'`,
+        [order.order_id, localStatus, providerDetail.data],
+      );
+      return { order_id: order.order_id, status: localStatus };
+    }
+  } catch (error) {
+    // A hosted payment page may not create the provider transaction until it is opened.
+    console.warn('[pakasir-expiry-detail]', order.order_id, error.message);
+  }
+
+  const cancellation = await pakasirCancelTransaction({
+    orderId: order.order_id,
+    amount: order.amount,
+  });
+  const cancelled = await query(
+    `UPDATE orders
+        SET status='expired',
+            provider_payload=COALESCE(provider_payload,'{}'::jsonb)
+              || jsonb_build_object('cancellation',$2::jsonb),
+            provider_checked_at=now(),updated_at=now()
+      WHERE order_id=$1 AND status='pending'
+      RETURNING order_id`,
+    [order.order_id, cancellation],
+  );
+  return {
+    order_id: order.order_id,
+    status: cancelled.rowCount ? 'expired' : 'unchanged',
+  };
+}
+
+async function expireStalePakasirOrders({ accountId, orderId, limit = 10 } = {}) {
+  const params = [];
+  const where = [
+    "payment_provider='pakasir'",
+    "status='pending'",
+    'expires_at IS NOT NULL',
+    'expires_at <= now()',
+  ];
+  if (accountId) {
+    params.push(accountId);
+    where.push(`game_account_id=$${params.length}`);
+  }
+  if (orderId) {
+    params.push(orderId);
+    where.push(`order_id=$${params.length}`);
+  }
+  params.push(limit);
+  const stale = await query(
+    `SELECT order_id,amount FROM orders
+      WHERE ${where.join(' AND ')}
+      ORDER BY expires_at ASC
+      LIMIT $${params.length}`,
+    params,
+  );
+  const results = [];
+  for (const order of stale.rows) {
+    try {
+      results.push(await expirePakasirOrder(order));
+    } catch (error) {
+      console.error('[pakasir-expiry]', order.order_id, error.message);
+      results.push({ order_id: order.order_id, status: 'failed' });
+    }
+  }
+  return results;
 }
 
 app.set('trust proxy', 1);
@@ -275,6 +370,7 @@ function accountView(row, admin = false) {
 }
 
 async function fetchAccounts({ id, gameName, admin = false } = {}) {
+  if (!admin) await expireStalePakasirOrders({ accountId: id });
   const params = [];
   const where = ['g.archived_at IS NULL'];
   if (id) { params.push(id); where.push(`g.id=$${params.length}`); }
@@ -290,7 +386,13 @@ async function fetchAccounts({ id, gameName, admin = false } = {}) {
        WHERE o.game_account_id=g.id
          AND (
            o.status='paid'
-           OR (o.status='pending' AND o.created_at > now() - ${reservationIntervalParam}::interval)
+           OR (
+             o.status='pending'
+             AND (
+               o.payment_provider='pakasir'
+               OR o.created_at > now() - ${reservationIntervalParam}::interval
+             )
+           )
            OR (
              o.status='awaiting_confirmation'
              AND o.created_at > now() - ${confirmationIntervalParam}::interval
@@ -468,6 +570,8 @@ app.post(
       return res.status(401).json({ error: 'Password admin salah.' });
     }
 
+    await expireStalePakasirOrders({ accountId: req.params.id });
+
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
@@ -503,7 +607,13 @@ app.post(
           `SELECT 1 FROM orders
             WHERE game_account_id=$1
               AND (
-                (status='pending' AND created_at > now() - $2::interval)
+                (
+                  status='pending'
+                  AND (
+                    payment_provider='pakasir'
+                    OR created_at > now() - $2::interval
+                  )
+                )
                 OR (
                   status='awaiting_confirmation'
                   AND created_at > now() - $3::interval
@@ -747,13 +857,16 @@ app.post('/api/checkout', publicWriteLimiter, async (req, res) => {
   if (!validEmail(buyerEmail) || !buyerName || !req.body.game_account_id) {
     return res.status(400).json({ error: 'Nama, email aktif, dan akun yang dibeli wajib diisi.' });
   }
+  await expireStalePakasirOrders({ accountId: req.body.game_account_id });
   const orderId = `ALB-${Date.now().toString(36).toUpperCase()}-${crypto.randomBytes(3).toString('hex').toUpperCase()}`.slice(0, 30);
   const paymentSettings = await getSettings();
   const paymentProvider = paymentSettings.payment_provider === 'pakasir' ? 'pakasir' : 'temanqris';
   const client = await pool.connect();
   let account;
   let insertedId;
+  let orderExpiresAt;
   let verificationRecordId;
+  let pakasirTransactionCreated = false;
   try {
     await client.query('BEGIN');
     const verification = await client.query(
@@ -788,7 +901,13 @@ app.post('/api/checkout', publicWriteLimiter, async (req, res) => {
       `SELECT status FROM orders WHERE game_account_id=$1
         AND (
           status='paid'
-          OR (status='pending' AND created_at > now() - $2::interval)
+          OR (
+            status='pending'
+            AND (
+              payment_provider='pakasir'
+              OR created_at > now() - $2::interval
+            )
+          )
           OR (
             status='awaiting_confirmation'
             AND created_at > now() - $3::interval
@@ -808,11 +927,19 @@ app.post('/api/checkout', publicWriteLimiter, async (req, res) => {
       throw error;
     }
     const inserted = await client.query(
-      `INSERT INTO orders(order_id,game_account_id,buyer_name,buyer_email,buyer_phone,amount,payment_provider)
-       VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
-      [orderId, account.id, buyerName, buyerEmail, String(req.body.buyer_phone || '').trim(), account.price, paymentProvider],
+      `INSERT INTO orders(
+         order_id,game_account_id,buyer_name,buyer_email,buyer_phone,amount,payment_provider,expires_at
+       )
+       VALUES($1,$2,$3,$4,$5,$6,$7,now()+$8::interval)
+       RETURNING id,expires_at`,
+      [
+        orderId, account.id, buyerName, buyerEmail,
+        String(req.body.buyer_phone || '').trim(), account.price, paymentProvider,
+        ORDER_RESERVATION_INTERVAL,
+      ],
     );
     insertedId = inserted.rows[0].id;
+    orderExpiresAt = inserted.rows[0].expires_at;
     await client.query(
       'UPDATE email_verifications SET used_at=now() WHERE id=$1',
       [verification.rows[0].id],
@@ -826,16 +953,27 @@ app.post('/api/checkout', publicWriteLimiter, async (req, res) => {
   }
   try {
     if (paymentProvider === 'pakasir') {
-      const payment = await pakasirPaymentUrl({
+      const paymentResult = await pakasirCreateTransaction({
         orderId,
         amount: account.price,
-        redirectUrl: `${publicBaseUrl}/payment-status?order_id=${encodeURIComponent(orderId)}`,
       });
+      pakasirTransactionCreated = true;
+      const providerExpiresAt = new Date(paymentResult.payment.expired_at);
+      const effectiveExpiresAt = providerExpiresAt < new Date(orderExpiresAt)
+        ? providerExpiresAt
+        : orderExpiresAt;
+      const paymentUrl = `${publicBaseUrl}/payment-status?order_id=${encodeURIComponent(orderId)}`;
       await query(
-        `UPDATE orders SET payment_url=$2,provider_payload=$3,updated_at=now() WHERE id=$1`,
-        [insertedId, payment.paymentUrl, { project: payment.project }],
+        `UPDATE orders
+            SET payment_url=$2,provider_payload=$3,expires_at=$4,updated_at=now()
+          WHERE id=$1`,
+        [insertedId, paymentUrl, paymentResult.data, effectiveExpiresAt],
       );
-      return res.status(201).json({ order_id: orderId, payment_url: payment.paymentUrl });
+      return res.status(201).json({
+        order_id: orderId,
+        payment_url: paymentUrl,
+        expires_at: effectiveExpiresAt,
+      });
     }
     const result = await temanqris('/payment-link', {
       method: 'POST',
@@ -855,6 +993,13 @@ app.post('/api/checkout', publicWriteLimiter, async (req, res) => {
     );
     res.status(201).json({ order_id: orderId, payment_url: paymentUrl, expires_at: link.expires_at });
   } catch (error) {
+    if (pakasirTransactionCreated) {
+      try {
+        await pakasirCancelTransaction({ orderId, amount: account.price });
+      } catch (cancellationError) {
+        console.error('[pakasir-checkout-cleanup]', orderId, cancellationError.message);
+      }
+    }
     await query('DELETE FROM orders WHERE id=$1', [insertedId]);
     if (verificationRecordId) {
       await query(
@@ -866,7 +1011,35 @@ app.post('/api/checkout', publicWriteLimiter, async (req, res) => {
   }
 });
 
+app.get('/api/orders/:orderId/qris', async (req, res) => {
+  await expireStalePakasirOrders({ orderId: req.params.orderId, limit: 1 });
+  const result = await query(
+    `SELECT status,expires_at,provider_payload->'payment'->>'payment_number' payment_number
+       FROM orders
+      WHERE order_id=$1 AND payment_provider='pakasir'`,
+    [req.params.orderId],
+  );
+  const order = result.rows[0];
+  if (!order) return res.status(404).end();
+  if (order.status !== 'pending' || !order.payment_number || new Date(order.expires_at) <= new Date()) {
+    return res.status(410).end();
+  }
+  const image = await QRCode.toBuffer(order.payment_number, {
+    type: 'png',
+    errorCorrectionLevel: 'M',
+    margin: 2,
+    width: 420,
+  });
+  res.set({
+    'Content-Type': 'image/png',
+    'Cache-Control': 'no-store, max-age=0',
+    'Content-Disposition': 'inline',
+  });
+  return res.send(image);
+});
+
 app.get('/api/orders/:orderId/status', async (req, res) => {
+  await expireStalePakasirOrders({ orderId: req.params.orderId, limit: 1 });
   try {
     await syncOrderFromProvider(req.params.orderId);
   } catch (error) {
@@ -874,7 +1047,8 @@ app.get('/api/orders/:orderId/status', async (req, res) => {
     console.error('[payment-sync]', req.params.orderId, error.message);
   }
   const result = await query(
-    `SELECT order_id,status,paid_at,fulfilled_at,created_at FROM orders WHERE order_id=$1`,
+    `SELECT order_id,status,payment_provider,amount,paid_at,fulfilled_at,created_at,expires_at
+       FROM orders WHERE order_id=$1`,
     [req.params.orderId],
   );
   if (!result.rowCount) return res.status(404).json({ error: 'Order tidak ditemukan.' });

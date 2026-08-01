@@ -80,6 +80,7 @@ CREATE TABLE IF NOT EXISTS orders (
   payment_url text,
   provider_payload jsonb,
   provider_checked_at timestamptz,
+  expires_at timestamptz,
   paid_at timestamptz,
   fulfilled_at timestamptz,
   fulfillment_started_at timestamptz,
@@ -95,6 +96,12 @@ CREATE INDEX IF NOT EXISTS reviews_account_idx ON reviews(game_account_id);
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS provider_checked_at timestamptz;
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_provider text NOT NULL DEFAULT 'temanqris';
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS fulfillment_started_at timestamptz;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS expires_at timestamptz;
+UPDATE orders
+  SET expires_at=created_at + interval '30 minutes'
+  WHERE expires_at IS NULL AND status IN ('pending','awaiting_confirmation');
+CREATE INDEX IF NOT EXISTS orders_pending_expiry_idx
+  ON orders(expires_at) WHERE status='pending';
 
 CREATE TABLE IF NOT EXISTS email_verifications (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

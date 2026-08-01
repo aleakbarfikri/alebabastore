@@ -16,7 +16,7 @@ export async function fulfillOrder(orderId, { forceResend = false } = {}) {
     const locked = await client.query(
       `SELECT o.*, g.title, g.game_name, g.account_code, g.delivery_credentials
          FROM orders o JOIN game_accounts g ON g.id=o.game_account_id
-        WHERE o.order_id=$1 FOR UPDATE OF o`,
+        WHERE o.order_id=$1 FOR UPDATE OF o,g`,
       [orderId],
     );
     order = locked.rows[0];
@@ -35,6 +35,20 @@ export async function fulfillOrder(orderId, { forceResend = false } = {}) {
     if (fulfillmentInProgress) {
       await client.query('COMMIT');
       return { alreadyProcessing: true };
+    }
+    const otherDelivery = await client.query(
+      `SELECT order_id FROM orders
+        WHERE game_account_id=$1 AND id<>$2
+          AND (fulfilled_at IS NOT NULL OR fulfillment_started_at IS NOT NULL)
+        LIMIT 1`,
+      [order.game_account_id, order.id],
+    );
+    if (otherDelivery.rowCount) {
+      const error = new Error(
+        `Pengiriman diblokir: akun telah dialokasikan ke order ${otherDelivery.rows[0].order_id}.`,
+      );
+      error.status = 409;
+      throw error;
     }
     if (!order.delivery_credentials) throw new Error('Kredensial produk belum diisi oleh admin.');
     await client.query(
