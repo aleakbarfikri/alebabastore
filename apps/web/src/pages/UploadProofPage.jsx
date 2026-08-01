@@ -28,6 +28,7 @@ const UploadProofPage = () => {
     token: '',
     loading: false,
   });
+  const [resendCooldown, setResendCooldown] = useState(0);
 
   useEffect(() => {
     fetchAllAccounts();
@@ -43,6 +44,14 @@ const UploadProofPage = () => {
     }
   }, [accounts, formData.game_account_id]);
 
+  useEffect(() => {
+    if (resendCooldown <= 0) return undefined;
+    const timer = window.setTimeout(() => {
+      setResendCooldown((seconds) => Math.max(0, seconds - 1));
+    }, 1000);
+    return () => window.clearTimeout(timer);
+  }, [resendCooldown]);
+
   const handleInputChange = (e) => {
     setFormData({
       ...formData,
@@ -50,6 +59,7 @@ const UploadProofPage = () => {
     });
     if (e.target.name === 'buyer_email') {
       setEmailVerification({ id: '', code: '', token: '', loading: false });
+      setResendCooldown(0);
     }
   };
 
@@ -70,6 +80,7 @@ const UploadProofPage = () => {
         token: '',
         loading: false,
       });
+      setResendCooldown(Number(result.resend_after) || 60);
       toast.success('Kode verifikasi sudah dikirim ke email.');
     } catch (error) {
       setEmailVerification((current) => ({ ...current, loading: false }));
@@ -221,10 +232,10 @@ const UploadProofPage = () => {
                       <button
                         type="button"
                         onClick={sendVerificationCode}
-                        disabled={emailVerification.loading}
+                        disabled={emailVerification.loading || resendCooldown > 0}
                         className="px-4 py-3 text-sm font-semibold text-primary"
                       >
-                        Kirim ulang
+                        {resendCooldown > 0 ? `Kirim ulang (${resendCooldown} detik)` : 'Kirim ulang'}
                       </button>
                     </div>
                   ) : (
@@ -282,7 +293,8 @@ const UploadProofPage = () => {
               <div className="flex items-start gap-3 rounded-xl border border-primary/20 bg-primary/5 p-4">
                 <LockKeyhole className="w-5 h-5 text-primary mt-0.5 shrink-0" />
                 <p className="text-sm text-muted-foreground">
-                  Email wajib diverifikasi. Kredensial produk hanya dikirim setelah pembayaran QRIS terverifikasi otomatis.
+                  Email wajib diverifikasi. Setelah link pembayaran dibuat, akun ditahan maksimal 30 menit.
+                  Kredensial produk hanya dikirim setelah pembayaran QRIS terverifikasi otomatis.
                 </p>
               </div>
 

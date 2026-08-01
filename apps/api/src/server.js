@@ -34,6 +34,9 @@ const vercelUrl = vercelHostname ? `https://${vercelHostname}` : '';
 const configuredBaseUrl = process.env.VERCEL_ENV === 'preview' ? '' : process.env.PUBLIC_BASE_URL;
 const publicBaseUrl = String(configuredBaseUrl || vercelUrl || `http://localhost:${port}`).replace(/\/$/, '');
 const PROVIDER_STATUSES = new Set(['pending', 'awaiting_confirmation', 'paid', 'expired', 'cancelled']);
+const ORDER_RESERVATION_INTERVAL = '30 minutes';
+const PAYMENT_CONFIRMATION_INTERVAL = '48 hours';
+const EMAIL_VERIFICATION_COOLDOWN_SECONDS = 60;
 
 async function syncOrderFromProvider(orderId, { force = false } = {}) {
   const localResult = await query(
@@ -277,15 +280,20 @@ async function fetchAccounts({ id, gameName, admin = false } = {}) {
   if (id) { params.push(id); where.push(`g.id=$${params.length}`); }
   if (gameName) { params.push(gameName); where.push(`g.game_name=$${params.length}`); }
   if (!admin) {
+    params.push(ORDER_RESERVATION_INTERVAL);
+    const reservationIntervalParam = `$${params.length}`;
+    params.push(PAYMENT_CONFIRMATION_INTERVAL);
+    const confirmationIntervalParam = `$${params.length}`;
     where.push('g.sold=false');
     where.push(`NOT EXISTS (
       SELECT 1 FROM orders o
        WHERE o.game_account_id=g.id
          AND (
            o.status='paid'
+           OR (o.status='pending' AND o.created_at > now() - ${reservationIntervalParam}::interval)
            OR (
-             o.status IN ('pending','awaiting_confirmation')
-             AND o.created_at > now() - interval '48 hours'
+             o.status='awaiting_confirmation'
+             AND o.created_at > now() - ${confirmationIntervalParam}::interval
            )
          )
     )`);
@@ -494,10 +502,15 @@ app.post(
         const activeOrder = await client.query(
           `SELECT 1 FROM orders
             WHERE game_account_id=$1
-              AND status IN ('pending','awaiting_confirmation')
-              AND created_at > now() - interval '48 hours'
+              AND (
+                (status='pending' AND created_at > now() - $2::interval)
+                OR (
+                  status='awaiting_confirmation'
+                  AND created_at > now() - $3::interval
+                )
+              )
             LIMIT 1`,
-          [req.params.id],
+          [req.params.id, ORDER_RESERVATION_INTERVAL, PAYMENT_CONFIRMATION_INTERVAL],
         );
         if (activeOrder.rowCount) {
           await client.query('ROLLBACK');
@@ -631,17 +644,50 @@ app.post('/api/checkout/email-verification', emailVerificationLimiter, async (re
   const code = String(crypto.randomInt(0, 1_000_000)).padStart(6, '0');
   const codeHash = await bcrypt.hash(code, 12);
   const expiresAt = new Date(Date.now() + 10 * 60_000);
-  await query(
-    `DELETE FROM email_verifications
-      WHERE email=$1 AND used_at IS NULL AND (expires_at <= now() OR verified_at IS NULL)`,
-    [email],
-  );
-  const inserted = await query(
-    `INSERT INTO email_verifications(email,code_hash,expires_at)
-     VALUES($1,$2,$3) RETURNING id`,
-    [email, codeHash, expiresAt],
-  );
-  const verificationId = inserted.rows[0].id;
+  const client = await pool.connect();
+  let verificationId;
+  try {
+    await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [email]);
+    const recent = await client.query(
+      `SELECT GREATEST(
+          1,
+          CEIL(EXTRACT(EPOCH FROM (
+            created_at + ($2::int * interval '1 second') - now()
+          )))
+        )::int retry_after
+        FROM email_verifications
+        WHERE email=$1
+          AND created_at > now() - ($2::int * interval '1 second')
+        ORDER BY created_at DESC
+        LIMIT 1`,
+      [email, EMAIL_VERIFICATION_COOLDOWN_SECONDS],
+    );
+    if (recent.rowCount) {
+      await client.query('ROLLBACK');
+      return res.status(429).json({
+        error: `Tunggu ${recent.rows[0].retry_after} detik sebelum mengirim ulang kode.`,
+        retry_after: recent.rows[0].retry_after,
+      });
+    }
+    await client.query(
+      `DELETE FROM email_verifications
+        WHERE email=$1 AND used_at IS NULL AND (expires_at <= now() OR verified_at IS NULL)`,
+      [email],
+    );
+    const inserted = await client.query(
+      `INSERT INTO email_verifications(email,code_hash,expires_at)
+       VALUES($1,$2,$3) RETURNING id`,
+      [email, codeHash, expiresAt],
+    );
+    verificationId = inserted.rows[0].id;
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
   try {
     await sendEmail({
       to: email,
@@ -654,7 +700,11 @@ app.post('/api/checkout/email-verification', emailVerificationLimiter, async (re
     await query('DELETE FROM email_verifications WHERE id=$1', [verificationId]);
     throw error;
   }
-  res.status(201).json({ verification_id: verificationId, expires_in: 600 });
+  res.status(201).json({
+    verification_id: verificationId,
+    expires_in: 600,
+    resend_after: EMAIL_VERIFICATION_COOLDOWN_SECONDS,
+  });
 });
 
 app.post('/api/checkout/email-verification/confirm', emailVerificationLimiter, async (req, res) => {
@@ -738,14 +788,15 @@ app.post('/api/checkout', publicWriteLimiter, async (req, res) => {
       `SELECT status FROM orders WHERE game_account_id=$1
         AND (
           status='paid'
+          OR (status='pending' AND created_at > now() - $2::interval)
           OR (
-            status IN ('pending','awaiting_confirmation')
-            AND created_at > now() - interval '48 hours'
+            status='awaiting_confirmation'
+            AND created_at > now() - $3::interval
           )
         )
         ORDER BY (status='paid') DESC
         LIMIT 1`,
-      [account.id],
+      [account.id, ORDER_RESERVATION_INTERVAL, PAYMENT_CONFIRMATION_INTERVAL],
     );
     if (reserved.rowCount) {
       const error = new Error(
