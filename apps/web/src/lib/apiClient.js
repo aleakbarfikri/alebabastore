@@ -12,6 +12,9 @@ export async function api(path, options = {}) {
   });
   if (response.status === 204) return null;
   const data = await response.json().catch(() => ({}));
+  if (response.status === 413) {
+    throw new Error('Total foto terlalu besar. Pilih ulang foto agar dikompres sebelum diunggah.');
+  }
   if (!response.ok) throw new Error(data.error || `Request gagal (${response.status})`);
   return data;
 }
