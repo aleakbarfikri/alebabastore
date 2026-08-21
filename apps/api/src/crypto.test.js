@@ -13,7 +13,9 @@ test('AES-GCM encrypts sensitive values and detects tampering', () => {
   assert.equal(decrypt(encrypted), plaintext);
 
   const parts = encrypted.split('.');
-  parts[3] = `${parts[3].slice(0, -1)}${parts[3].endsWith('A') ? 'B' : 'A'}`;
+  const tamperedCiphertext = Buffer.from(parts[3], 'base64url');
+  tamperedCiphertext[0] ^= 1;
+  parts[3] = tamperedCiphertext.toString('base64url');
   assert.throws(() => decrypt(parts.join('.')));
 });
 

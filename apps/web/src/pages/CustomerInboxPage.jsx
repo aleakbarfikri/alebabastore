@@ -3,6 +3,7 @@ import { Helmet } from 'react-helmet';
 import { Inbox, Mail, RefreshCw, ShieldCheck } from 'lucide-react';
 import Header from '@/components/Header.jsx';
 import Footer from '@/components/Footer.jsx';
+import CustomerReviewForm from '@/components/CustomerReviewForm.jsx';
 import { api } from '@/lib/apiClient.js';
 import { useAuth } from '@/contexts/AuthContext.jsx';
 
@@ -66,6 +67,8 @@ export default function CustomerInboxPage() {
         </div>
 
         {error && <div className="mb-6 rounded-xl border border-destructive/30 bg-destructive/10 p-4 text-destructive">{error}</div>}
+
+        <CustomerReviewForm />
 
         {loading && !messages.length ? (
           <div className="py-20 text-center text-muted-foreground">Memuat email masuk...</div>

@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { RefreshCcw, StarHalf } from 'lucide-react';
 import { api } from '@/lib/apiClient.js';
-import ReviewForm from './ReviewForm.jsx';
 import ReviewCard from './ReviewCard.jsx';
 import { toast } from 'sonner';
 
@@ -19,7 +18,7 @@ const ReviewSection = ({ gameAccountId }) => {
       setReviews(result);
     } catch (err) {
       console.error('Failed to fetch reviews:', err);
-      setError('Failed to load reviews. Please try again.');
+      setError('Gagal memuat ulasan. Silakan coba lagi.');
     } finally {
       setLoading(false);
     }
@@ -34,11 +33,11 @@ const ReviewSection = ({ gameAccountId }) => {
   const handleDeleteReview = async (id) => {
     try {
       await api(`/reviews/${encodeURIComponent(id)}`, { method: 'DELETE' });
-      toast.success('Review deleted');
+      toast.success('Ulasan berhasil dihapus');
       fetchReviews();
     } catch (err) {
       console.error('Failed to delete review:', err);
-      toast.error('Failed to delete review');
+      toast.error('Gagal menghapus ulasan');
     }
   };
 
@@ -46,17 +45,19 @@ const ReviewSection = ({ gameAccountId }) => {
     ? (reviews.reduce((acc, rev) => acc + rev.rating, 0) / reviews.length).toFixed(1)
     : 0;
 
+  if (!loading && !error && reviews.length === 0) return null;
+
   return (
     <div className="mt-16 pt-12 border-t border-border">
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-10">
         <div>
-          <h2 className="text-3xl font-bold text-foreground tracking-tight mb-2">Customer Reviews</h2>
+          <h2 className="text-3xl font-bold text-foreground tracking-tight mb-2">Ulasan Customer</h2>
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-1 text-[hsl(var(--rating-star))]">
               <StarHalf className="w-5 h-5 fill-current" />
               <span className="text-xl font-bold text-foreground">{averageRating}</span>
             </div>
-            <span className="text-muted-foreground">({reviews.length} reviews)</span>
+            <span className="text-muted-foreground">({reviews.length} ulasan)</span>
           </div>
         </div>
 
@@ -69,7 +70,7 @@ const ReviewSection = ({ gameAccountId }) => {
                 : 'text-muted-foreground hover:text-foreground'
             }`}
           >
-            Newest
+            Terbaru
           </button>
           <button
             onClick={() => setSortBy('highest')}
@@ -79,19 +80,12 @@ const ReviewSection = ({ gameAccountId }) => {
                 : 'text-muted-foreground hover:text-foreground'
             }`}
           >
-            Highest Rating
+            Rating Tertinggi
           </button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
-        <div className="lg:col-span-4 order-2 lg:order-1">
-          <div className="sticky top-24">
-            <ReviewForm gameAccountId={gameAccountId} onSuccess={fetchReviews} />
-          </div>
-        </div>
-
-        <div className="lg:col-span-8 order-1 lg:order-2">
+      <div>
           {loading ? (
             <div className="space-y-6">
               {[1, 2, 3].map((skeleton) => (
@@ -118,7 +112,7 @@ const ReviewSection = ({ gameAccountId }) => {
                 className="px-4 py-2 bg-muted text-foreground hover:bg-muted/80 rounded-lg inline-flex items-center gap-2 transition-colors"
               >
                 <RefreshCcw className="w-4 h-4" />
-                Retry
+                Coba lagi
               </button>
             </div>
           ) : reviews.length === 0 ? (
@@ -126,9 +120,9 @@ const ReviewSection = ({ gameAccountId }) => {
               <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
                 <StarHalf className="w-8 h-8 text-muted-foreground" />
               </div>
-              <h3 className="text-xl font-bold text-foreground mb-2">No reviews yet</h3>
+              <h3 className="text-xl font-bold text-foreground mb-2">Belum ada ulasan</h3>
               <p className="text-muted-foreground max-w-md mx-auto">
-                Be the first to share your experience with this account.
+                Ulasan hanya dapat dikirim oleh customer setelah pembelian selesai.
               </p>
             </div>
           ) : (
@@ -138,7 +132,6 @@ const ReviewSection = ({ gameAccountId }) => {
               ))}
             </div>
           )}
-        </div>
       </div>
     </div>
   );

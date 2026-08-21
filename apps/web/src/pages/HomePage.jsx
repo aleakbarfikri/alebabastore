@@ -2,12 +2,13 @@ import React, { useEffect, useState } from 'react';
 import { Helmet } from 'react-helmet';
 import { Link } from '@/lib/router.jsx';
 import { motion } from 'framer-motion';
-import { Shield, Zap, TrendingUp, ArrowRight } from 'lucide-react';
+import { Shield, Zap, TrendingUp, ArrowRight, BadgeCheck, Star } from 'lucide-react';
 import { toast } from 'sonner';
 import Header from '@/components/Header.jsx';
 import Footer from '@/components/Footer.jsx';
 import GameAccountCard from '@/components/GameAccountCard.jsx';
 import { useGameAccounts } from '@/hooks/useGameAccounts.js';
+import { api } from '@/lib/apiClient.js';
 
 const HomePage = () => {
   const {
@@ -15,6 +16,7 @@ const HomePage = () => {
     deleteAccount
   } = useGameAccounts();
   const [featuredAccounts, setFeaturedAccounts] = useState([]);
+  const [testimonials, setTestimonials] = useState([]);
 
   const loadFeatured = async () => {
     try {
@@ -27,6 +29,9 @@ const HomePage = () => {
 
   useEffect(() => {
     loadFeatured();
+    api('/reviews/featured')
+      .then(setTestimonials)
+      .catch((error) => console.error('Failed to load testimonials:', error));
   }, []);
 
   const handleDelete = async id => {
@@ -169,6 +174,46 @@ const HomePage = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-16">
                 {featuredAccounts.map(account => (
                   <GameAccountCard key={account.id} account={account} onDelete={handleDelete} />
+                ))}
+              </div>
+            </div>
+          </section>
+        )}
+
+        {testimonials.length > 0 && (
+          <section className="border-t border-border/50 bg-card/30 py-24">
+            <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+              <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="mb-14 text-center">
+                <h2 className="mb-4 text-3xl font-bold tracking-tight text-foreground md:text-4xl">Testimoni Pembeli</h2>
+                <p className="text-lg text-muted-foreground">Pengalaman asli dari transaksi yang sudah selesai.</p>
+              </motion.div>
+
+              <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+                {testimonials.map((review, index) => (
+                  <motion.article
+                    key={review.id}
+                    initial={{ opacity: 0, y: 20 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    viewport={{ once: true }}
+                    transition={{ delay: index * 0.08 }}
+                    className="rounded-3xl border border-border bg-card p-6 shadow-sm"
+                  >
+                    <div className="mb-4 flex items-center justify-between gap-3">
+                      <div className="flex gap-1" aria-label={`${review.rating} dari 5 bintang`}>
+                        {[1, 2, 3, 4, 5].map((value) => (
+                          <Star key={value} className={`h-4 w-4 ${value <= review.rating ? 'fill-[hsl(var(--rating-star))] text-[hsl(var(--rating-star))]' : 'text-muted-foreground/25'}`} />
+                        ))}
+                      </div>
+                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs font-semibold text-emerald-400">
+                        <BadgeCheck className="h-4 w-4" /> Terverifikasi
+                      </span>
+                    </div>
+                    <p className="line-clamp-5 min-h-[6.5rem] text-sm leading-relaxed text-muted-foreground">“{review.comment}”</p>
+                    <div className="mt-5 border-t border-border pt-4">
+                      <p className="font-bold text-foreground">{review.customerName || 'Customer'}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">{review.accountTitle} · {review.gameName}</p>
+                    </div>
+                  </motion.article>
                 ))}
               </div>
             </div>

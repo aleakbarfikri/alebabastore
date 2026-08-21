@@ -124,6 +124,23 @@ CREATE INDEX IF NOT EXISTS orders_account_idx ON orders(game_account_id);
 CREATE INDEX IF NOT EXISTS orders_status_idx ON orders(status);
 CREATE INDEX IF NOT EXISTS reviews_account_idx ON reviews(game_account_id);
 
+ALTER TABLE reviews ADD COLUMN IF NOT EXISTS order_id text;
+ALTER TABLE reviews ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'reviews_order_id_fkey'
+  ) THEN
+    ALTER TABLE reviews
+      ADD CONSTRAINT reviews_order_id_fkey
+      FOREIGN KEY (order_id) REFERENCES orders(order_id) ON DELETE CASCADE;
+  END IF;
+END $$;
+
+CREATE UNIQUE INDEX IF NOT EXISTS reviews_order_unique_idx
+  ON reviews(order_id) WHERE order_id IS NOT NULL;
+
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS provider_checked_at timestamptz;
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_provider text NOT NULL DEFAULT 'temanqris';
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS fulfillment_started_at timestamptz;

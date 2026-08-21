@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Star, Trash2 } from 'lucide-react';
+import { BadgeCheck, Star, Trash2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext.jsx';
 
 const ReviewCard = ({ review, onDelete }) => {
@@ -7,7 +7,7 @@ const ReviewCard = ({ review, onDelete }) => {
   const [isDeleting, setIsDeleting] = useState(false);
 
   const handleDelete = async () => {
-    if (window.confirm('Are you sure you want to delete this review?')) {
+    if (window.confirm('Hapus ulasan ini?')) {
       setIsDeleting(true);
       await onDelete(review.id);
       setIsDeleting(false);
@@ -20,7 +20,7 @@ const ReviewCard = ({ review, onDelete }) => {
     day: 'numeric'
   });
 
-  const reviewerName = review.customerName || 'Anonymous';
+  const reviewerName = review.customerName || 'Customer';
   const initial = reviewerName.charAt(0).toUpperCase();
 
   // Consistent background color based on name
@@ -29,12 +29,12 @@ const ReviewCard = ({ review, onDelete }) => {
 
   return (
     <div className="bg-card border border-border rounded-2xl p-6 relative group transition-all duration-300 hover:shadow-md">
-      {isAdmin() && (
+      {isAdmin() && onDelete && (
         <button
           onClick={handleDelete}
           disabled={isDeleting}
           className="absolute top-4 right-4 p-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors disabled:opacity-50"
-          aria-label="Delete review"
+          aria-label="Hapus ulasan"
         >
           <Trash2 className="w-4 h-4" />
         </button>
@@ -45,7 +45,14 @@ const ReviewCard = ({ review, onDelete }) => {
           {initial}
         </div>
         <div>
-          <h4 className="font-semibold text-foreground">{reviewerName}</h4>
+          <div className="flex flex-wrap items-center gap-2">
+            <h4 className="font-semibold text-foreground">{reviewerName}</h4>
+            {review.verified && (
+              <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-400">
+                <BadgeCheck className="h-4 w-4" /> Pembelian terverifikasi
+              </span>
+            )}
+          </div>
           <p className="text-xs text-muted-foreground">{formattedDate}</p>
         </div>
       </div>

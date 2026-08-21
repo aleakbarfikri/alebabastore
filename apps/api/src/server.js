@@ -28,6 +28,7 @@ import {
   generateMailboxPasswordForAdmin, resetMailboxPassword, setMailboxDisabled,
 } from './mailboxes.js';
 import { customerInbox, handleResendInbound } from './resend-inbound.js';
+import { normalizeReviewInput } from './review-utils.js';
 
 const app = express();
 const upload = multer({
@@ -492,6 +493,67 @@ app.get('/api/customer/inbox', requireCustomer, async (req, res) => {
   res.json({ user: req.customer, messages: await customerInbox(req.customer.id) });
 });
 
+async function customerReviewContext(mailboxId) {
+  const result = await query(
+    `SELECT o.order_id,g.id game_account_id,COALESCE(g.title,g.game_name) account_title,
+            g.game_name,r.id review_id,r.rating,r.comment,
+            r.customer_name,r.created_at,r.updated_at
+       FROM customer_mailboxes m
+       JOIN game_accounts g ON g.mailbox_id=m.id
+       JOIN orders o ON o.game_account_id=g.id
+         AND o.status='paid' AND o.fulfilled_at IS NOT NULL
+       LEFT JOIN reviews r ON r.order_id=o.order_id
+      WHERE m.id=$1
+      ORDER BY o.paid_at DESC NULLS LAST,o.created_at DESC
+      LIMIT 1`,
+    [mailboxId],
+  );
+  return result.rows[0] || null;
+}
+
+app.get('/api/customer/review', requireCustomer, async (req, res) => {
+  const context = await customerReviewContext(req.customer.id);
+  if (!context) return res.json({ eligible: false, review: null });
+  return res.json({
+    eligible: true,
+    account: {
+      id: context.game_account_id,
+      title: context.account_title,
+      gameName: context.game_name,
+    },
+    review: context.review_id ? {
+      id: context.review_id,
+      rating: context.rating,
+      comment: context.comment,
+      customerName: context.customer_name,
+      created: context.created_at,
+      updated: context.updated_at,
+      verified: true,
+    } : null,
+  });
+});
+
+app.post('/api/customer/review', requireCustomer, publicWriteLimiter, async (req, res) => {
+  const input = normalizeReviewInput(req.body);
+  const context = await customerReviewContext(req.customer.id);
+  if (!context) {
+    return res.status(403).json({ error: 'Testimoni hanya tersedia setelah pembelian lunas dan akun terkirim.' });
+  }
+  const result = await query(
+    `INSERT INTO reviews(game_account_id,order_id,rating,comment,customer_name,updated_at)
+     VALUES($1,$2,$3,$4,$5,now())
+     ON CONFLICT (order_id) WHERE order_id IS NOT NULL DO UPDATE SET
+       rating=EXCLUDED.rating,
+       comment=EXCLUDED.comment,
+       customer_name=EXCLUDED.customer_name,
+       updated_at=now()
+     RETURNING id,rating,comment,customer_name "customerName",
+               created_at created,updated_at updated,true verified`,
+    [context.game_account_id, context.order_id, input.rating, input.comment, input.customerName],
+  );
+  res.status(context.review_id ? 200 : 201).json(result.rows[0]);
+});
+
 app.post('/api/auth/change-password', requireAdmin, loginLimiter, async (req, res) => {
   const currentPassword = String(req.body.current_password || '');
   const newPassword = String(req.body.new_password || '');
@@ -799,7 +861,8 @@ app.delete('/api/accounts/:id', requireAdmin, async (req, res) => {
 app.get('/api/accounts/:id/reviews', async (req, res) => {
   const order = req.query.sort === 'highest' ? 'rating DESC, created_at DESC' : 'created_at DESC';
   const result = await query(
-    `SELECT id, rating, comment, customer_name "customerName", created_at created
+    `SELECT id, rating, comment, customer_name "customerName", created_at created,
+            (order_id IS NOT NULL) verified
        FROM reviews WHERE game_account_id=$1 ORDER BY ${order} LIMIT 100`,
     [req.params.id],
   );
@@ -807,17 +870,22 @@ app.get('/api/accounts/:id/reviews', async (req, res) => {
 });
 
 app.post('/api/accounts/:id/reviews', publicWriteLimiter, async (req, res) => {
-  const rating = Number(req.body.rating);
-  const comment = String(req.body.comment || '').trim();
-  if (rating < 1 || rating > 5 || comment.length < 10 || comment.length > 2000) {
-    return res.status(400).json({ error: 'Rating atau komentar tidak valid.' });
-  }
+  res.status(403).json({ error: 'Testimoni hanya dapat dikirim dari inbox customer setelah pembelian selesai.' });
+});
+
+app.get('/api/reviews/featured', async (_req, res) => {
   const result = await query(
-    `INSERT INTO reviews(game_account_id,rating,comment,customer_name)
-     VALUES ($1,$2,$3,$4) RETURNING id,rating,comment,customer_name "customerName",created_at created`,
-    [req.params.id, rating, comment, String(req.body.customerName || 'Anonymous').slice(0, 120)],
+    `SELECT r.id,r.rating,r.comment,r.customer_name "customerName",
+            r.created_at created,true verified,
+            COALESCE(g.title,g.game_name) "accountTitle",g.game_name "gameName"
+       FROM reviews r
+       JOIN game_accounts g ON g.id=r.game_account_id
+      WHERE r.order_id IS NOT NULL
+      ORDER BY r.created_at DESC
+      LIMIT 6`,
   );
-  res.status(201).json(result.rows[0]);
+  res.set('Cache-Control', 'public, max-age=60, s-maxage=300, stale-while-revalidate=600');
+  res.json(result.rows);
 });
 
 app.delete('/api/reviews/:id', requireAdmin, async (req, res) => {
