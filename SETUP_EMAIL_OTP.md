@@ -99,11 +99,12 @@ Jika pesan tidak muncul:
 1. Admin membuat 10–100 alamat acak di menu Inbox OTP.
    Password setiap alamat baru ditampilkan sekali; segera salin semua atau unduh CSV.
    Untuk alamat lama, tekan tombol kunci untuk membuat password.
+   Email dan password langsung dapat dipakai login dan menerima OTP tanpa menunggu penjualan.
 2. Saat membuat produk akun game, admin memilih salah satu alamat kosong.
 3. Customer checkout memakai email pribadinya.
 4. Setelah pembayaran berhasil, sistem mengirim email domain AlebabaStore dan
    password inbox ke email pribadi customer.
-5. Customer login dan hanya melihat pesan/OTP miliknya.
+5. Customer login memakai kredensial yang sudah disiapkan admin dan hanya melihat pesan/OTP miliknya.
 
 Pesan otomatis hilang setelah 60 hari. Customer tidak dapat menghapus pesan,
 mengganti password, atau melihat inbox customer lain. Reset password dan

@@ -21,11 +21,10 @@ export async function loginCustomer(email, password, res) {
   const result = await query(
     `SELECT m.id,m.address,m.password_hash,g.account_code,g.title,g.game_name
        FROM customer_mailboxes m
-       JOIN game_accounts g ON g.mailbox_id=m.id
+       LEFT JOIN game_accounts g ON g.mailbox_id=m.id
       WHERE lower(m.address)=$1
-        AND m.activated_at IS NOT NULL
         AND m.disabled_at IS NULL
-        AND g.sold=true
+        AND m.password_hash IS NOT NULL
       LIMIT 1`,
     [normalizedEmail],
   );
@@ -65,9 +64,9 @@ export async function currentCustomer(req) {
     `SELECT m.id,m.address,g.account_code,g.title,g.game_name
        FROM customer_sessions s
        JOIN customer_mailboxes m ON m.id=s.mailbox_id
-       JOIN game_accounts g ON g.mailbox_id=m.id
+       LEFT JOIN game_accounts g ON g.mailbox_id=m.id
       WHERE s.token_hash=$1 AND s.expires_at > now()
-        AND m.activated_at IS NOT NULL AND m.disabled_at IS NULL AND g.sold=true`,
+        AND m.disabled_at IS NULL AND m.password_hash IS NOT NULL`,
     [sha256(token)],
   );
   return result.rows[0] ? customerView(result.rows[0]) : null;

@@ -84,8 +84,9 @@ export async function handleResendInbound(rawBody, headers) {
     ].map(extractAddress);
     const mailboxResult = await query(
       `SELECT m.id,m.address FROM customer_mailboxes m
-        JOIN game_accounts g ON g.mailbox_id=m.id
-        WHERE lower(m.address)=ANY($1::text[]) AND m.disabled_at IS NULL
+        WHERE lower(m.address)=ANY($1::text[])
+          AND m.password_hash IS NOT NULL
+          AND m.disabled_at IS NULL
         LIMIT 1`,
       [recipients],
     );

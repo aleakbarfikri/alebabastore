@@ -121,7 +121,7 @@ export async function prepareMailboxDelivery(mailboxId, buyerEmail, { reset = fa
   if (!mailbox) return null;
 
   let password = mailbox.pending_password ? decrypt(mailbox.pending_password) : '';
-  if (!password && (reset || !mailbox.password_hash)) {
+  if (!password && reset) {
     password = generateCustomerPassword();
     const passwordHash = await bcrypt.hash(password, 12);
     await query('DELETE FROM customer_sessions WHERE mailbox_id=$1', [mailbox.id]);
@@ -132,17 +132,16 @@ export async function prepareMailboxDelivery(mailboxId, buyerEmail, { reset = fa
         WHERE id=$1`,
       [mailbox.id, passwordHash, encrypt(password), String(buyerEmail).trim().toLowerCase()],
     );
-  } else if (password) {
+  } else if (!password) {
+    const error = new Error('Password inbox belum disiapkan. Buat password dari dashboard admin sebelum menjual akun.');
+    error.status = 409;
+    throw error;
+  } else {
     await query(
       `UPDATE customer_mailboxes
           SET buyer_email=$2,activated_at=COALESCE(activated_at,now()),
               disabled_at=NULL,updated_at=now()
         WHERE id=$1`,
-      [mailbox.id, String(buyerEmail).trim().toLowerCase()],
-    );
-  } else if (mailbox.buyer_email !== String(buyerEmail).trim().toLowerCase()) {
-    await query(
-      'UPDATE customer_mailboxes SET buyer_email=$2,updated_at=now() WHERE id=$1',
       [mailbox.id, String(buyerEmail).trim().toLowerCase()],
     );
   }
