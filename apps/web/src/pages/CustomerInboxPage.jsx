@@ -34,7 +34,7 @@ export default function CustomerInboxPage() {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <Helmet>
-        <title>Inbox OTP - ALEBABA STORE</title>
+        <title>Inbox Email & OTP - ALEBABA STORE</title>
         <meta name="robots" content="noindex, nofollow" />
       </Helmet>
       <Header />
@@ -45,7 +45,7 @@ export default function CustomerInboxPage() {
               <div className="flex items-center gap-2 text-primary font-semibold mb-2">
                 <ShieldCheck className="w-5 h-5" /> Inbox aman dan hanya-baca
               </div>
-              <h1 className="text-3xl font-bold text-foreground">Inbox OTP</h1>
+              <h1 className="text-3xl font-bold text-foreground">Inbox Email & OTP</h1>
               <p className="mt-2 text-muted-foreground">{currentUser?.email}</p>
               {currentUser?.account_code && (
                 <p className="text-sm text-muted-foreground">Akun: {currentUser.account_title} ({currentUser.account_code})</p>
@@ -73,7 +73,7 @@ export default function CustomerInboxPage() {
           <div className="rounded-3xl border border-dashed border-border bg-card/50 py-20 text-center">
             <Inbox className="w-14 h-14 mx-auto mb-4 text-muted-foreground/40" />
             <h2 className="text-xl font-bold text-foreground">Belum ada email masuk</h2>
-            <p className="mt-2 text-muted-foreground">Email OTP baru akan muncul otomatis di halaman ini.</p>
+            <p className="mt-2 text-muted-foreground">Semua email baru, termasuk kode OTP, akan muncul otomatis di halaman ini.</p>
           </div>
         ) : (
           <div className="space-y-4">
