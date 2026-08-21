@@ -97,6 +97,8 @@ Jika pesan tidak muncul:
 ## Pemakaian sehari-hari
 
 1. Admin membuat 10–100 alamat acak di menu Inbox OTP.
+   Password setiap alamat baru ditampilkan sekali; segera salin semua atau unduh CSV.
+   Untuk alamat lama, tekan tombol kunci untuk membuat password.
 2. Saat membuat produk akun game, admin memilih salah satu alamat kosong.
 3. Customer checkout memakai email pribadinya.
 4. Setelah pembayaran berhasil, sistem mengirim email domain AlebabaStore dan
