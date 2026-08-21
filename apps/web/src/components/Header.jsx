@@ -57,7 +57,7 @@ const Header = () => {
                   className="px-4 py-2 rounded-lg text-sm font-medium bg-secondary/10 text-secondary hover:bg-secondary hover:text-secondary-foreground transition-all flex items-center gap-2"
                 >
                   {isAdmin() ? <LayoutDashboard className="w-4 h-4" /> : <Mail className="w-4 h-4" />}
-                  {isAdmin() ? 'Dashboard' : 'Inbox OTP'}
+                  {isAdmin() ? 'Dashboard' : 'Inbox Email'}
                 </Link>
                 <button
                   onClick={handleLogout}
@@ -124,7 +124,7 @@ const Header = () => {
                     className="block px-4 py-3 rounded-xl font-medium bg-secondary/10 text-secondary hover:bg-secondary hover:text-secondary-foreground transition-all"
                   >
                     {isAdmin() ? <LayoutDashboard className="w-4 h-4 inline mr-2" /> : <Mail className="w-4 h-4 inline mr-2" />}
-                    {isAdmin() ? 'Dashboard' : 'Inbox OTP'}
+                    {isAdmin() ? 'Dashboard' : 'Inbox Email'}
                   </Link>
                   <button
                     onClick={() => {

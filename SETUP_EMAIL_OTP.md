@@ -1,4 +1,4 @@
-# Pasang Email OTP AlebabaStore (cara mudah)
+# Pasang Inbox Email & OTP AlebabaStore (cara mudah)
 
 Panduan ini cukup dilakukan sekali. Siapkan akses ke Vercel, Resend, dan tempat
 Anda membeli/mengelola domain AlebabaStore.
@@ -8,7 +8,7 @@ Anda membeli/mengelola domain AlebabaStore.
 Ganti contoh berikut dengan milik Anda:
 
 - Domain website: `alebabastore.shop`
-- Domain inbox OTP: `mail.alebabastore.shop`
+- Domain inbox email dan OTP: `mail.alebabastore.shop`
 - Alamat webhook: `https://www.alebabastore.shop/api/webhooks/resend/inbound`
 
 Gunakan subdomain `mail.` khusus untuk inbox. Jangan memakai domain utama karena
@@ -79,7 +79,7 @@ API key dan secret tidak boleh dimasukkan ke source code atau GitHub.
 
 ## 6. Tes dari awal sampai akhir
 
-1. Login admin, buka menu **Inbox OTP**, lalu buat 1 alamat dengan panjang 6.
+1. Login admin, buka menu **Inbox Email**, lalu buat 1 alamat dengan panjang 6.
 2. Kirim email biasa dari Gmail ke alamat baru tersebut.
 3. Tunggu beberapa detik, lalu login customer melalui tombol **Login** yang sama
    menggunakan alamat AlebabaStore dan password inbox.
@@ -96,7 +96,7 @@ Jika pesan tidak muncul:
 
 ## Pemakaian sehari-hari
 
-1. Admin membuat 10–100 alamat acak di menu Inbox OTP.
+1. Admin membuat 10–100 alamat acak di menu Inbox Email.
    Password setiap alamat baru ditampilkan sekali; segera salin semua atau unduh CSV.
    Untuk alamat lama, tekan tombol kunci untuk membuat password.
    Email dan password langsung dapat dipakai login dan menerima OTP tanpa menunggu penjualan.
