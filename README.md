@@ -31,6 +31,10 @@ sebagai inbox hanya-baca untuk customer. Admin membuat pool 1–100 alamat acak
 sepanjang 4–6 karakter dari dashboard, lalu memilih satu alamat ketika membuat
 listing akun game. Panjang 6 karakter menjadi pilihan bawaan.
 
+Untuk pemasangan tanpa istilah teknis, ikuti panduan klik-per-klik
+[SETUP_EMAIL_OTP.md](SETUP_EMAIL_OTP.md). Panduan itu juga berisi tes akhir agar
+Anda tahu inbox sudah benar-benar dapat menerima OTP.
+
 1. Tambahkan subdomain penerima di Resend, misalnya `mail.alebabastore.com`, lalu
    pasang MX record yang diberikan Resend pada pengelola DNS domain.
 2. Isi `INBOUND_EMAIL_DOMAIN` dengan subdomain tersebut.
