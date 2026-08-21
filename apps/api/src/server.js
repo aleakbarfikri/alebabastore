@@ -25,7 +25,7 @@ import { pakasirCancelTransaction, pakasirCreateTransaction, pakasirTransactionD
 import { temanqris, verifyWebhook } from './temanqris.js';
 import {
   cleanupExpiredMail, createMailboxBatch, inboundEmailDomain, listMailboxes,
-  resetMailboxPassword, setMailboxDisabled,
+  generateMailboxPasswordForAdmin, resetMailboxPassword, setMailboxDisabled,
 } from './mailboxes.js';
 import { customerInbox, handleResendInbound } from './resend-inbound.js';
 
@@ -1147,11 +1147,17 @@ app.post('/api/admin/mailboxes', requireAdmin, async (req, res) => {
     count: req.body.count,
     codeLength: req.body.code_length,
   });
+  res.set('Cache-Control', 'no-store');
   res.status(201).json({ domain: inboundEmailDomain(), mailboxes });
 });
 
 app.post('/api/admin/mailboxes/:id/reset-password', requireAdmin, async (req, res) => {
   res.json(await resetMailboxPassword(req.params.id, publicBaseUrl));
+});
+
+app.post('/api/admin/mailboxes/:id/generate-password', requireAdmin, async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json(await generateMailboxPasswordForAdmin(req.params.id));
 });
 
 app.patch('/api/admin/mailboxes/:id/status', requireAdmin, async (req, res) => {

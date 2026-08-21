@@ -5,6 +5,7 @@ import { sendEmail } from './email.js';
 import { generateCustomerPassword, randomMailboxLocalPart } from './mailbox-utils.js';
 
 const DEFAULT_CODE_LENGTH = 6;
+const MAILBOX_PASSWORD_HASH_ROUNDS = 10;
 
 export function inboundEmailDomain() {
   return String(process.env.INBOUND_EMAIL_DOMAIN || '').trim().toLowerCase().replace(/^@/, '');
@@ -39,13 +40,15 @@ export async function createMailboxBatch({ count, codeLength }) {
       for (let attempt = 0; attempt < 20 && !inserted; attempt += 1) {
         const localPart = randomMailboxLocalPart(requestedLength);
         const address = `${localPart}@${domain}`;
+        const password = generateCustomerPassword();
+        const passwordHash = await bcrypt.hash(password, MAILBOX_PASSWORD_HASH_ROUNDS);
         const result = await client.query(
-          `INSERT INTO customer_mailboxes(local_part,domain,address)
-           VALUES($1,$2,$3) ON CONFLICT DO NOTHING
+          `INSERT INTO customer_mailboxes(local_part,domain,address,password_hash,pending_password)
+           VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING
            RETURNING id,address,local_part,domain,created_at`,
-          [localPart, domain, address],
+          [localPart, domain, address, passwordHash, encrypt(password)],
         );
-        inserted = result.rows[0];
+        inserted = result.rows[0] ? { ...result.rows[0], password } : undefined;
       }
       if (!inserted) throw new Error('Gagal membuat alamat unik. Silakan coba kembali.');
       created.push(inserted);
@@ -63,6 +66,7 @@ export async function createMailboxBatch({ count, codeLength }) {
 export async function listMailboxes() {
   const result = await query(
     `SELECT m.id,m.address,m.local_part,m.domain,m.buyer_email,m.activated_at,m.disabled_at,
+            (m.password_hash IS NOT NULL) password_configured,
             m.created_at,g.id game_account_id,g.account_code,g.title,g.game_name,g.sold,
             COUNT(i.id)::int message_count
        FROM customer_mailboxes m
@@ -76,6 +80,38 @@ export async function listMailboxes() {
     ...row,
     status: row.disabled_at ? 'disabled' : row.activated_at ? 'active' : row.game_account_id ? 'assigned' : 'available',
   }));
+}
+
+export async function generateMailboxPasswordForAdmin(mailboxId) {
+  const mailboxResult = await query(
+    `SELECT m.id,m.address,m.activated_at,m.disabled_at,g.sold
+       FROM customer_mailboxes m
+       LEFT JOIN game_accounts g ON g.mailbox_id=m.id
+      WHERE m.id=$1`,
+    [mailboxId],
+  );
+  const mailbox = mailboxResult.rows[0];
+  if (!mailbox) {
+    const error = new Error('Mailbox tidak ditemukan.');
+    error.status = 404;
+    throw error;
+  }
+  if (mailbox.activated_at || mailbox.disabled_at || mailbox.sold) {
+    const error = new Error('Password mailbox customer aktif harus direset dan dikirim ke email pribadinya.');
+    error.status = 409;
+    throw error;
+  }
+
+  const password = generateCustomerPassword();
+  const passwordHash = await bcrypt.hash(password, MAILBOX_PASSWORD_HASH_ROUNDS);
+  await query('DELETE FROM customer_sessions WHERE mailbox_id=$1', [mailbox.id]);
+  await query(
+    `UPDATE customer_mailboxes
+        SET password_hash=$2,pending_password=$3,updated_at=now()
+      WHERE id=$1`,
+    [mailbox.id, passwordHash, encrypt(password)],
+  );
+  return { id: mailbox.id, address: mailbox.address, password };
 }
 
 export async function prepareMailboxDelivery(mailboxId, buyerEmail, { reset = false } = {}) {
@@ -95,6 +131,14 @@ export async function prepareMailboxDelivery(mailboxId, buyerEmail, { reset = fa
               activated_at=now(),disabled_at=NULL,updated_at=now()
         WHERE id=$1`,
       [mailbox.id, passwordHash, encrypt(password), String(buyerEmail).trim().toLowerCase()],
+    );
+  } else if (password) {
+    await query(
+      `UPDATE customer_mailboxes
+          SET buyer_email=$2,activated_at=COALESCE(activated_at,now()),
+              disabled_at=NULL,updated_at=now()
+        WHERE id=$1`,
+      [mailbox.id, String(buyerEmail).trim().toLowerCase()],
     );
   } else if (mailbox.buyer_email !== String(buyerEmail).trim().toLowerCase()) {
     await query(
