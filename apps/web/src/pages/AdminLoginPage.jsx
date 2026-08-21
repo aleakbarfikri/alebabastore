@@ -2,13 +2,13 @@ import React, { useState } from 'react';
 import { Helmet } from 'react-helmet';
 import { useNavigate } from '@/lib/router.jsx';
 import { motion } from 'framer-motion';
-import { Shield, LogIn, AlertCircle, KeyRound } from 'lucide-react';
+import { Shield, LogIn, AlertCircle, KeyRound, Mail } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 
 const AdminLoginPage = () => {
   const navigate = useNavigate();
-  const { adminLogin, verifyTwoFactor } = useAuth();
+  const { login, verifyTwoFactor } = useAuth();
   const [formData, setFormData] = useState({
     username: '',
     password: '',
@@ -49,16 +49,16 @@ const AdminLoginPage = () => {
     try {
       const authData = twoFactor
         ? await verifyTwoFactor(formData.code)
-        : await adminLogin(formData.username, formData.password);
+        : await login(formData.username, formData.password);
 
       if (authData.requires_two_factor) {
         setTwoFactor(authData);
         setFormData((current) => ({ ...current, password: '', code: '' }));
         return;
       }
-      if (authData.user?.role !== 'admin') {
-        setError('Akses ditolak.');
-        setLoading(false);
+      if (authData.user?.role === 'customer') {
+        toast.success('Login berhasil.');
+        navigate('/inbox');
         return;
       }
       if (authData.recovery_codes?.length) {
@@ -81,7 +81,7 @@ const AdminLoginPage = () => {
   return (
     <>
       <Helmet>
-        <title>Admin Login - ALEBABA STORE</title>
+        <title>Login - ALEBABA STORE</title>
         <meta name="robots" content="noindex, nofollow" />
       </Helmet>
 
@@ -95,11 +95,11 @@ const AdminLoginPage = () => {
         >
           <div className="text-center mb-8">
             <div className="w-16 h-16 bg-card border border-border rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-sm">
-              <Shield className="w-8 h-8 text-primary" />
+              {formData.username.includes('@') ? <Mail className="w-8 h-8 text-primary" /> : <Shield className="w-8 h-8 text-primary" />}
             </div>
-            <h1 className="text-3xl font-extrabold text-foreground tracking-tight mb-2">Restricted Access</h1>
+            <h1 className="text-3xl font-extrabold text-foreground tracking-tight mb-2">Login AlebabaStore</h1>
             <p className="text-muted-foreground">
-              {twoFactor ? 'Masukkan kode dari aplikasi Authenticator.' : 'Please sign in to the admin console.'}
+              {twoFactor ? 'Masukkan kode dari aplikasi Authenticator.' : 'Customer memakai email AlebabaStore. Admin memakai username.'}
             </p>
           </div>
 
@@ -136,7 +136,7 @@ const AdminLoginPage = () => {
             ) : <form onSubmit={handleSubmit} className="space-y-5">
               {!twoFactor && <div>
                 <label htmlFor="username" className="block text-sm font-semibold text-foreground mb-2">
-                  Username Admin
+                  Email AlebabaStore atau username admin
                 </label>
                 <input
                   type="text"
@@ -148,7 +148,7 @@ const AdminLoginPage = () => {
                   disabled={loading}
                   className="w-full px-4 py-3.5 bg-background border border-border rounded-xl text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                   autoComplete="username"
-                  placeholder="Masukkan username"
+                  placeholder="contoh: k7m2qx@mail.domain.com"
                 />
               </div>}
 
@@ -230,7 +230,7 @@ const AdminLoginPage = () => {
                 ) : (
                   <>
                     {twoFactor ? <KeyRound className="w-5 h-5" /> : <LogIn className="w-5 h-5" />}
-                    {twoFactor ? (twoFactor.setup_required ? 'Aktifkan 2FA & Masuk' : 'Verifikasi & Masuk') : 'Sign in to Console'}
+                    {twoFactor ? (twoFactor.setup_required ? 'Aktifkan 2FA & Masuk' : 'Verifikasi & Masuk') : 'Login'}
                   </>
                 )}
               </button>
@@ -238,7 +238,7 @@ const AdminLoginPage = () => {
           </div>
           
           <p className="text-center text-xs text-muted-foreground mt-8">
-            Unauthorized access to this portal is strictly prohibited.
+            Jangan berikan password atau kode OTP kepada siapa pun.
           </p>
         </motion.div>
       </div>

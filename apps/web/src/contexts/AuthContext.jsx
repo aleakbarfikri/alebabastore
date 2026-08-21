@@ -15,14 +15,14 @@ export const AuthProvider = ({ children }) => {
       .finally(() => setInitialLoading(false));
   }, []);
 
-  const adminLogin = useCallback(async (username, password) => {
+  const login = useCallback(async (identifier, password) => {
     try {
-      if (!username || !password) {
-        throw new Error('Username dan password wajib diisi.');
+      if (!identifier || !password) {
+        throw new Error('Email/username dan password wajib diisi.');
       }
       const authData = await api('/auth/login', {
         method: 'POST',
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ identifier, password }),
       });
       if (authData.user) setCurrentUser(authData.user);
       return authData;
@@ -41,7 +41,7 @@ export const AuthProvider = ({ children }) => {
     return authData;
   }, []);
 
-  const adminLogout = useCallback(async () => {
+  const logout = useCallback(async () => {
     try {
       await api('/auth/logout', { method: 'POST' });
       setCurrentUser(null);
@@ -64,9 +64,11 @@ export const AuthProvider = ({ children }) => {
     <AuthContext.Provider 
       value={{ 
         currentUser, 
-        adminLogin, 
+        login,
+        adminLogin: login,
         verifyTwoFactor,
-        adminLogout, 
+        logout,
+        adminLogout: logout,
         getCurrentUser, 
         isAdmin, 
         isAuthenticated, 

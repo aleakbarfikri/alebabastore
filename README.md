@@ -24,6 +24,32 @@ mencegah database tertukar saat deployment.
    alamat pengirim dari domain terverifikasi.
    Nilai rahasia dienkripsi dan tidak ditampilkan kembali.
 
+## Inbox OTP customer
+
+AlebabaStore dapat menerima OTP game melalui Resend Inbound dan menampilkannya
+sebagai inbox hanya-baca untuk customer. Admin membuat pool 1–100 alamat acak
+sepanjang 4–6 karakter dari dashboard, lalu memilih satu alamat ketika membuat
+listing akun game. Panjang 6 karakter menjadi pilihan bawaan.
+
+1. Tambahkan subdomain penerima di Resend, misalnya `mail.alebabastore.com`, lalu
+   pasang MX record yang diberikan Resend pada pengelola DNS domain.
+2. Isi `INBOUND_EMAIL_DOMAIN` dengan subdomain tersebut.
+3. Buat webhook Resend untuk event `email.received` dengan URL:
+
+   `https://DOMAIN-ANDA/api/webhooks/resend/inbound`
+
+4. Salin signing secret webhook ke `RESEND_WEBHOOK_SECRET`.
+5. Isi `CRON_SECRET` dengan secret acak agar pembersihan email terjadwal Vercel
+   dapat berjalan.
+
+Setelah pembayaran lunas, password inbox dibuat otomatis dan dikirim bersama
+detail akun ke email pribadi customer yang sudah diverifikasi saat checkout.
+Customer masuk melalui `/login` menggunakan email AlebabaStore dan password
+tersebut. Customer hanya dapat membaca pesan; perubahan password hanya dapat
+dilakukan admin. Isi, subjek, dan pengirim email disimpan terenkripsi dan pesan
+dihapus otomatis 60 hari setelah diterima. Attachment dan HTML aktif tidak
+ditampilkan untuk mengurangi risiko pelacakan dan script berbahaya.
+
 ### Deployment Vercel
 
 Project Vercel dapat tetap menggunakan Root Directory `apps/web`. Rewrite
