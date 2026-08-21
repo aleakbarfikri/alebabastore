@@ -9,3 +9,4 @@ apps/web/public/llms.txt
 
 # PocketBase runtime data must never be committed again.
 apps/pocketbase/pb_data/
+.vercel
