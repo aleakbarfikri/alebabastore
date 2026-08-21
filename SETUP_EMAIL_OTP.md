@@ -7,9 +7,9 @@ Anda membeli/mengelola domain AlebabaStore.
 
 Ganti contoh berikut dengan milik Anda:
 
-- Domain website: `alebabastore.com`
-- Domain inbox OTP: `mail.alebabastore.com`
-- Alamat webhook: `https://alebabastore.com/api/webhooks/resend/inbound`
+- Domain website: `alebabastore.shop`
+- Domain inbox OTP: `mail.alebabastore.shop`
+- Alamat webhook: `https://www.alebabastore.shop/api/webhooks/resend/inbound`
 
 Gunakan subdomain `mail.` khusus untuk inbox. Jangan memakai domain utama karena
 dapat mengganggu email bisnis yang sudah ada.
@@ -18,7 +18,7 @@ dapat mengganggu email bisnis yang sudah ada.
 
 1. Masuk ke Resend.
 2. Buka **Domains**, lalu pilih **Add Domain**.
-3. Masukkan `mail.DOMAIN-ANDA`, misalnya `mail.alebabastore.com`.
+3. Masukkan `mail.DOMAIN-ANDA`, misalnya `mail.alebabastore.shop`.
 4. Pilih region terdekat jika Resend menanyakannya.
 5. Resend akan menampilkan beberapa DNS record. Biarkan halaman ini terbuka.
 
@@ -51,14 +51,13 @@ record untuk subdomain `mail` sesuai nilai dari Resend.
 
 1. Di Vercel buka project **alebabastore-web**.
 2. Buka **Settings → Environment Variables**.
-3. Tambahkan nilai berikut untuk **Production**, **Preview**, dan
-   **Development**:
+3. Tambahkan nilai berikut pada environment yang tercantum:
 
-| Name | Value |
-| --- | --- |
-| `INBOUND_EMAIL_DOMAIN` | `mail.DOMAIN-ANDA` tanpa `https://` |
-| `RESEND_WEBHOOK_SECRET` | Signing Secret dari langkah 3 |
-| `CRON_SECRET` | Teks acak panjang minimal 32 karakter |
+| Name | Value | Environment |
+| --- | --- | --- |
+| `INBOUND_EMAIL_DOMAIN` | `mail.DOMAIN-ANDA` tanpa `https://` | Production dan Preview |
+| `RESEND_WEBHOOK_SECRET` | Signing Secret dari langkah 3 | Production |
+| `CRON_SECRET` | Teks acak panjang minimal 32 karakter | Production |
 
 Untuk `CRON_SECRET`, gunakan password generator. Jangan menggunakan password
 admin, API key, nama toko, atau nomor WhatsApp.
