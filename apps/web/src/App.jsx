@@ -12,6 +12,8 @@ import UploadProofPage from '@/pages/UploadProofPage';
 import AdminLoginPage from '@/pages/AdminLoginPage';
 import AdminDashboard from '@/pages/AdminDashboard';
 import PaymentStatusPage from '@/pages/PaymentStatusPage';
+import CustomerInboxPage from '@/pages/CustomerInboxPage.jsx';
+import CustomerProtectedRoute from '@/components/CustomerProtectedRoute.jsx';
 
 function App() {
   return (
@@ -27,8 +29,17 @@ function App() {
             <Route path="/upload" element={<UploadProofPage />} />
             <Route path="/payment-status" element={<PaymentStatusPage />} />
             
-            {/* Unprotected Admin Login route */}
+            {/* Unified customer/admin login routes */}
+            <Route path="/login" element={<AdminLoginPage />} />
             <Route path="/admin-login" element={<AdminLoginPage />} />
+            <Route
+              path="/inbox"
+              element={
+                <CustomerProtectedRoute>
+                  <CustomerInboxPage />
+                </CustomerProtectedRoute>
+              }
+            />
             
             {/* Protected Admin Dashboard route */}
             <Route

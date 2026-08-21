@@ -27,6 +27,12 @@
       ]
     }
   ],
+  "crons": [
+    {
+      "path": "/api/cron/cleanup-mail",
+      "schedule": "17 2 * * *"
+    }
+  ],
   "rewrites": [
     {
       "source": "/api/:path*",

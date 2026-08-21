@@ -26,6 +26,34 @@ CREATE TABLE IF NOT EXISTS admin_sessions (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS customer_mailboxes (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  local_part text NOT NULL CHECK (local_part ~ '^[a-z0-9]{4,6}$'),
+  domain text NOT NULL,
+  address text UNIQUE NOT NULL,
+  password_hash text,
+  pending_password text,
+  buyer_email text,
+  activated_at timestamptz,
+  disabled_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS customer_mailboxes_address_lower_idx
+  ON customer_mailboxes(lower(address));
+
+CREATE TABLE IF NOT EXISTS customer_sessions (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  mailbox_id uuid NOT NULL REFERENCES customer_mailboxes(id) ON DELETE CASCADE,
+  token_hash text UNIQUE NOT NULL,
+  expires_at timestamptz NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS customer_sessions_mailbox_idx
+  ON customer_sessions(mailbox_id);
+
 CREATE TABLE IF NOT EXISTS game_accounts (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   account_code text UNIQUE NOT NULL,
@@ -39,11 +67,14 @@ CREATE TABLE IF NOT EXISTS game_accounts (
   sold boolean NOT NULL DEFAULT false,
   archived_at timestamptz,
   delivery_credentials text,
+  mailbox_id uuid UNIQUE REFERENCES customer_mailboxes(id) ON DELETE SET NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
 ALTER TABLE game_accounts ADD COLUMN IF NOT EXISTS archived_at timestamptz;
+ALTER TABLE game_accounts ADD COLUMN IF NOT EXISTS mailbox_id uuid UNIQUE
+  REFERENCES customer_mailboxes(id) ON DELETE SET NULL;
 
 CREATE TABLE IF NOT EXISTS account_images (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -119,6 +150,29 @@ CREATE INDEX IF NOT EXISTS email_verifications_email_idx
   ON email_verifications(email, created_at DESC);
 CREATE INDEX IF NOT EXISTS email_verifications_expires_idx
   ON email_verifications(expires_at);
+
+CREATE TABLE IF NOT EXISTS inbound_email_messages (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  mailbox_id uuid NOT NULL REFERENCES customer_mailboxes(id) ON DELETE CASCADE,
+  resend_email_id text UNIQUE NOT NULL,
+  webhook_id text UNIQUE NOT NULL,
+  sender_encrypted text NOT NULL,
+  subject_encrypted text NOT NULL,
+  body_encrypted text NOT NULL,
+  received_at timestamptz NOT NULL,
+  expires_at timestamptz NOT NULL DEFAULT (now() + interval '60 days'),
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS inbound_email_messages_mailbox_idx
+  ON inbound_email_messages(mailbox_id, received_at DESC);
+CREATE INDEX IF NOT EXISTS inbound_email_messages_expiry_idx
+  ON inbound_email_messages(expires_at);
+
+CREATE TABLE IF NOT EXISTS processed_email_webhooks (
+  webhook_id text PRIMARY KEY,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
 
 CREATE TABLE IF NOT EXISTS app_settings (
   id smallint PRIMARY KEY DEFAULT 1 CHECK (id = 1),

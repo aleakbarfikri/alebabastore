@@ -61,7 +61,7 @@ const AdminPasswordChangeCard = () => {
 
       setTimeout(() => {
         adminLogout();
-        window.location.href = '/admin-login';
+        window.location.href = '/login';
       }, 900);
     } catch (error) {
       console.error('[AdminPasswordChangeCard] Failed to change password:', error);

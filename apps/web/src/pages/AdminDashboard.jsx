@@ -11,6 +11,7 @@ import StatisticsCard from '@/components/StatisticsCard.jsx'; import AdminPasswo
 import EditItemModal from '@/components/EditItemModal.jsx';
 import PaymentSettingsCard from '@/components/PaymentSettingsCard.jsx';
 import TwoFactorRecoveryCard from '@/components/TwoFactorRecoveryCard.jsx';
+import MailboxManagementCard from '@/components/MailboxManagementCard.jsx';
 import { useGameAccounts } from '@/hooks/useGameAccounts.js';
 import { useBuyerInquiries } from '@/hooks/useBuyerInquiries.js';
 import { useAuth } from '@/contexts/AuthContext.jsx';
@@ -54,6 +55,8 @@ const AdminDashboard = () => {
   const [accountToUpdateStatus, setAccountToUpdateStatus] = useState(null);
   const [statusPassword, setStatusPassword] = useState('');
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+  const [mailboxes, setMailboxes] = useState([]);
+  const [mailboxDomain, setMailboxDomain] = useState('');
 
   const [formData, setFormData] = useState({
     title: '',
@@ -63,6 +66,7 @@ const AdminDashboard = () => {
     description: '',
     price: '',
     townhall_level: '',
+    mailbox_id: '',
     credential_email: '',
     credential_password: '',
     backup_codes: ''
@@ -71,9 +75,18 @@ const AdminDashboard = () => {
   const [submitting, setSubmitting] = useState(false);
   const backupCodeCount = backupCodesFrom(formData.backup_codes).length;
 
+  const loadMailboxes = async () => {
+    const result = await api('/admin/mailboxes');
+    setMailboxes(result.mailboxes || []);
+    setMailboxDomain(result.domain || '');
+  };
+
   const loadDashboardData = () => {
-    fetchAllAccounts().catch(console.error);
-    fetchInquiries().catch(console.error);
+    return Promise.all([
+      fetchAllAccounts(),
+      fetchInquiries(),
+      loadMailboxes(),
+    ]).catch(console.error);
   };
 
   useEffect(() => {
@@ -103,10 +116,8 @@ const AdminDashboard = () => {
       return;
     }
 
-    if (!formData.credential_email.trim() || !formData.credential_password || backupCodeCount !== 8) {
-      toast.error(
-        `Isi email akun, password, dan tepat 8 kode cadangan Gmail. Saat ini terdeteksi ${backupCodeCount} kode.`,
-      );
+    if (!formData.mailbox_id || !formData.credential_email.trim() || !formData.credential_password) {
+      toast.error('Pilih email AlebabaStore dan isi password akun game.');
       setSubmitting(false);
       return;
     }
@@ -119,6 +130,7 @@ const AdminDashboard = () => {
         description: formData.description,
         price: parseFloat(formData.price),
         account_code: accountCode,
+        mailbox_id: formData.mailbox_id,
         credential_email: formData.credential_email,
         credential_password: formData.credential_password,
         backup_codes: formData.backup_codes,
@@ -149,12 +161,14 @@ const AdminDashboard = () => {
         description: '',
         price: '',
         townhall_level: '',
+        mailbox_id: '',
         credential_email: '',
         credential_password: '',
         backup_codes: ''
       });
       setImages([]);
       setShowAddForm(false);
+      await loadMailboxes();
     } catch (error) {
       let errorMsg = 'Gagal menambahkan akun game.';
       if (error.response && error.response.data) {
@@ -333,6 +347,11 @@ const AdminDashboard = () => {
           <PaymentSettingsCard />
           <AdminPasswordChangeCard />
           <TwoFactorRecoveryCard />
+          <MailboxManagementCard
+            domain={mailboxDomain}
+            mailboxes={mailboxes}
+            onRefresh={loadMailboxes}
+          />
           {/* Game Accounts Management */}
           <section className="mb-16">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
@@ -521,19 +540,34 @@ const AdminDashboard = () => {
                       <div className="border border-primary/20 bg-primary/5 rounded-2xl p-5">
                         <h4 className="font-bold text-foreground mb-4">Data pengiriman otomatis</h4>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <input type="email" name="credential_email" value={formData.credential_email} onChange={handleInputChange} required
-                            className="w-full px-4 py-3 bg-background border border-border rounded-xl text-white caret-white placeholder:text-slate-400" placeholder="Email akun Gmail" />
+                          <select
+                            name="mailbox_id"
+                            value={formData.mailbox_id}
+                            onChange={(event) => {
+                              const selected = mailboxes.find((mailbox) => mailbox.id === event.target.value);
+                              setFormData((current) => ({
+                                ...current,
+                                mailbox_id: event.target.value,
+                                credential_email: selected?.address || '',
+                              }));
+                            }}
+                            required
+                            className="w-full px-4 py-3 bg-background border border-border rounded-xl text-foreground"
+                          >
+                            <option value="">Pilih email AlebabaStore</option>
+                            {mailboxes.filter((mailbox) => mailbox.status === 'available').map((mailbox) => (
+                              <option key={mailbox.id} value={mailbox.id}>{mailbox.address}</option>
+                            ))}
+                          </select>
                           <input type="password" name="credential_password" value={formData.credential_password} onChange={handleInputChange} required
-                            className="w-full px-4 py-3 bg-background border border-border rounded-xl text-white caret-white placeholder:text-slate-400" placeholder="Password akun Gmail" />
-                          <textarea name="backup_codes" value={formData.backup_codes} onChange={handleInputChange} required rows={5}
+                            className="w-full px-4 py-3 bg-background border border-border rounded-xl text-white caret-white placeholder:text-slate-400" placeholder="Password akun game" />
+                          <textarea name="backup_codes" value={formData.backup_codes} onChange={handleInputChange} rows={5}
                             className="md:col-span-2 w-full px-4 py-3 bg-background border border-border rounded-xl resize-none text-white caret-white placeholder:text-slate-400"
-                            placeholder={"Masukkan tepat 8 kode cadangan Gmail, satu kode per baris"} />
+                            placeholder={"Kode pemulihan akun (opsional), satu kode per baris"} />
                         </div>
                         <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs">
                           <p className="text-muted-foreground">Data dienkripsi AES-256-GCM dan tidak pernah dikirim ke browser publik.</p>
-                          <p className={backupCodeCount === 8 ? 'text-emerald-500 font-semibold' : 'text-amber-500 font-semibold'}>
-                            {backupCodeCount}/8 kode terdeteksi
-                          </p>
+                          <p className="text-muted-foreground">{backupCodeCount} kode pemulihan terdeteksi</p>
                         </div>
                       </div>
 

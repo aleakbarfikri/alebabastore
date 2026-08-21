@@ -14,12 +14,20 @@ import {
   SESSION_COOKIE, beginTwoFactorChallenge, bootstrapAdmin, completeTwoFactorChallenge,
   currentAdmin, regenerateRecoveryCodes, requireAdmin, revokeSession,
 } from './auth.js';
-import { decrypt, encrypt, sha256 } from './crypto.js';
+import {
+  currentCustomer, loginCustomer, requireCustomer, revokeCustomerSession,
+} from './customer-auth.js';
+import { decrypt, encrypt, safeEqual, sha256 } from './crypto.js';
 import { sendEmail } from './email.js';
 import { getSettings, publicSettings, updateSettings } from './settings.js';
 import { fulfillOrder } from './fulfillment.js';
 import { pakasirCancelTransaction, pakasirCreateTransaction, pakasirTransactionDetail } from './pakasir.js';
 import { temanqris, verifyWebhook } from './temanqris.js';
+import {
+  cleanupExpiredMail, createMailboxBatch, inboundEmailDomain, listMailboxes,
+  resetMailboxPassword, setMailboxDisabled,
+} from './mailboxes.js';
+import { customerInbox, handleResendInbound } from './resend-inbound.js';
 
 const app = express();
 const upload = multer({
@@ -238,6 +246,20 @@ app.use(helmet({
 }));
 app.use(cookieParser());
 
+// Resend signs the exact raw payload. Register this route before express.json().
+app.post('/api/webhooks/resend/inbound', express.raw({ type: 'application/json', limit: '1mb' }), async (req, res, next) => {
+  try {
+    const result = await handleResendInbound(req.body, {
+      id: req.get('svix-id'),
+      timestamp: req.get('svix-timestamp'),
+      signature: req.get('svix-signature'),
+    });
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+});
+
 // Raw body is mandatory for HMAC verification and must be registered before express.json().
 app.post('/api/webhooks/temanqris', express.raw({ type: 'application/json', limit: '256kb' }), async (req, res, next) => {
   try {
@@ -364,6 +386,8 @@ function accountView(row, admin = false) {
     sold: row.sold,
     images: row.image_ids || [],
     credentials_configured: admin ? Boolean(row.delivery_credentials) : undefined,
+    mailbox_id: admin ? row.mailbox_id : undefined,
+    mailbox_address: admin ? row.mailbox_address : undefined,
     created: row.created_at,
     updated: row.updated_at,
   };
@@ -381,6 +405,7 @@ async function fetchAccounts({ id, gameName, admin = false } = {}) {
     params.push(PAYMENT_CONFIRMATION_INTERVAL);
     const confirmationIntervalParam = `$${params.length}`;
     where.push('g.sold=false');
+    where.push('(g.mailbox_id IS NULL OR m.disabled_at IS NULL)');
     where.push(`NOT EXISTS (
       SELECT 1 FROM orders o
        WHERE o.game_account_id=g.id
@@ -401,10 +426,13 @@ async function fetchAccounts({ id, gameName, admin = false } = {}) {
     )`);
   }
   const result = await query(
-    `SELECT g.*, COALESCE(array_agg(i.id ORDER BY i.sort_order) FILTER (WHERE i.id IS NOT NULL), '{}') image_ids
-       FROM game_accounts g LEFT JOIN account_images i ON i.account_id=g.id
+    `SELECT g.*,m.address mailbox_address,
+            COALESCE(array_agg(i.id ORDER BY i.sort_order) FILTER (WHERE i.id IS NOT NULL), '{}') image_ids
+       FROM game_accounts g
+       LEFT JOIN account_images i ON i.account_id=g.id
+       LEFT JOIN customer_mailboxes m ON m.id=g.mailbox_id
       WHERE ${where.join(' AND ')}
-      GROUP BY g.id ORDER BY g.created_at DESC`,
+      GROUP BY g.id,m.id ORDER BY g.created_at DESC`,
     params,
   );
   return result.rows.map((row) => accountView(row, admin));
@@ -416,8 +444,14 @@ app.get('/api/health', async (_req, res) => {
 });
 
 app.post('/api/auth/login', loginLimiter, async (req, res) => {
-  const username = String(req.body.username || '').trim();
+  const username = String(req.body.identifier || req.body.username || req.body.email || '').trim();
   const password = String(req.body.password || '');
+  if (username.includes('@')) {
+    await revokeSession(req, res);
+    const customer = await loginCustomer(username, password, res);
+    return res.json({ user: customer });
+  }
+  await revokeCustomerSession(req, res);
   const result = await query('SELECT * FROM admins WHERE lower(username)=lower($1)', [username]);
   const admin = result.rows[0];
   if (!admin || !(await bcrypt.compare(password, admin.password_hash))) {
@@ -433,13 +467,21 @@ app.post('/api/auth/verify-2fa', loginLimiter, async (req, res) => {
 
 app.get('/api/auth/me', async (req, res) => {
   const admin = await currentAdmin(req);
-  if (!admin) return res.status(401).json({ error: 'Belum login.' });
-  res.json({ user: admin });
+  if (admin) return res.json({ user: admin });
+  const customer = await currentCustomer(req);
+  if (customer) return res.json({ user: customer });
+  return res.status(401).json({ error: 'Belum login.' });
 });
 
 app.post('/api/auth/logout', async (req, res) => {
   await revokeSession(req, res);
+  await revokeCustomerSession(req, res);
   res.json({ ok: true });
+});
+
+app.get('/api/customer/inbox', requireCustomer, async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json({ user: req.customer, messages: await customerInbox(req.customer.id) });
 });
 
 app.post('/api/auth/change-password', requireAdmin, loginLimiter, async (req, res) => {
@@ -503,8 +545,8 @@ function deliveryCredentials(body, required) {
   const password = String(body.credential_password || '');
   const backupCodes = String(body.backup_codes || '').split(/[\n,]+/).map((v) => v.trim()).filter(Boolean);
   if (!email && !password && !backupCodes.length && !required) return null;
-  if (!validEmail(email) || !password || backupCodes.length !== 8) {
-    const error = new Error('Email akun, password, dan tepat 8 kode cadangan Gmail wajib diisi.');
+  if (!validEmail(email) || !password || backupCodes.length > 20) {
+    const error = new Error('Email akun dan password wajib diisi. Kode pemulihan bersifat opsional (maksimal 20).');
     error.status = 400;
     throw error;
   }
@@ -527,18 +569,39 @@ async function saveImages(client, accountId, files, replace = false) {
 
 app.post('/api/accounts', requireAdmin, upload.array('images', 10), async (req, res) => {
   const credentials = deliveryCredentials(req.body, true);
+  const mailboxId = String(req.body.mailbox_id || '');
+  if (!mailboxId) return res.status(400).json({ error: 'Pilih email AlebabaStore untuk akun game.' });
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    const mailboxResult = await client.query(
+      `SELECT id,address FROM customer_mailboxes m
+        WHERE id=$1 AND disabled_at IS NULL AND activated_at IS NULL
+          AND NOT EXISTS (SELECT 1 FROM game_accounts g WHERE g.mailbox_id=m.id)
+        FOR UPDATE`,
+      [mailboxId],
+    );
+    const mailbox = mailboxResult.rows[0];
+    if (!mailbox) {
+      const error = new Error('Email AlebabaStore tidak tersedia atau sudah dipakai.');
+      error.status = 409;
+      throw error;
+    }
+    const credentialEmail = JSON.parse(decrypt(credentials)).email.toLowerCase();
+    if (credentialEmail !== mailbox.address.toLowerCase()) {
+      const error = new Error('Email kredensial harus sama dengan mailbox AlebabaStore yang dipilih.');
+      error.status = 400;
+      throw error;
+    }
     const inserted = await client.query(
       `INSERT INTO game_accounts
-       (account_code,title,game_name,level,rank,description,price,townhall_level,delivery_credentials)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
+       (account_code,title,game_name,level,rank,description,price,townhall_level,delivery_credentials,mailbox_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
       [
         String(req.body.account_code || `ACC-${crypto.randomBytes(4).toString('hex').toUpperCase()}`),
         req.body.title || null, req.body.game_name, Number(req.body.level), req.body.rank || '',
         req.body.description, Number(req.body.price), req.body.townhall_level ? Number(req.body.townhall_level) : null,
-        credentials,
+        credentials, mailbox.id,
       ],
     );
     await saveImages(client, inserted.rows[0].id, req.files);
@@ -656,6 +719,13 @@ app.patch('/api/accounts/:id', requireAdmin, upload.array('images', 10), async (
     });
   }
   const credentials = deliveryCredentials(req.body, false) || row.delivery_credentials;
+  if (row.mailbox_id && credentials !== row.delivery_credentials) {
+    const mailbox = await query('SELECT address FROM customer_mailboxes WHERE id=$1', [row.mailbox_id]);
+    const credentialEmail = JSON.parse(decrypt(credentials)).email.toLowerCase();
+    if (!mailbox.rowCount || credentialEmail !== mailbox.rows[0].address.toLowerCase()) {
+      return res.status(400).json({ error: 'Email kredensial harus sama dengan mailbox AlebabaStore akun ini.' });
+    }
+  }
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -883,7 +953,12 @@ app.post('/api/checkout', publicWriteLimiter, async (req, res) => {
     }
     verificationRecordId = verification.rows[0].id;
     const accountResult = await client.query(
-      'SELECT * FROM game_accounts WHERE id=$1 AND sold=false AND archived_at IS NULL FOR UPDATE',
+      `SELECT * FROM game_accounts g
+        WHERE id=$1 AND sold=false AND archived_at IS NULL
+          AND (mailbox_id IS NULL OR EXISTS (
+            SELECT 1 FROM customer_mailboxes m WHERE m.id=g.mailbox_id AND m.disabled_at IS NULL
+          ))
+        FOR UPDATE`,
       [req.body.game_account_id],
     );
     account = accountResult.rows[0];
@@ -1061,6 +1136,38 @@ app.get('/api/admin/orders', requireAdmin, async (_req, res) => {
       JOIN game_accounts g ON g.id=o.game_account_id ORDER BY o.created_at DESC LIMIT 200`,
   );
   res.json(result.rows);
+});
+
+app.get('/api/admin/mailboxes', requireAdmin, async (_req, res) => {
+  res.json({ domain: inboundEmailDomain(), mailboxes: await listMailboxes() });
+});
+
+app.post('/api/admin/mailboxes', requireAdmin, async (req, res) => {
+  const mailboxes = await createMailboxBatch({
+    count: req.body.count,
+    codeLength: req.body.code_length,
+  });
+  res.status(201).json({ domain: inboundEmailDomain(), mailboxes });
+});
+
+app.post('/api/admin/mailboxes/:id/reset-password', requireAdmin, async (req, res) => {
+  res.json(await resetMailboxPassword(req.params.id, publicBaseUrl));
+});
+
+app.patch('/api/admin/mailboxes/:id/status', requireAdmin, async (req, res) => {
+  if (typeof req.body.disabled !== 'boolean') {
+    return res.status(400).json({ error: 'Status mailbox tidak valid.' });
+  }
+  res.json(await setMailboxDisabled(req.params.id, req.body.disabled));
+});
+
+app.get('/api/cron/cleanup-mail', async (req, res) => {
+  const secret = String(process.env.CRON_SECRET || '');
+  const authorization = String(req.get('Authorization') || '');
+  if (!secret || !safeEqual(authorization, `Bearer ${secret}`)) {
+    return res.status(401).json({ error: 'Tidak diizinkan.' });
+  }
+  res.json({ deleted: await cleanupExpiredMail() });
 });
 
 app.post('/api/admin/orders/:orderId/verify', requireAdmin, async (req, res) => {

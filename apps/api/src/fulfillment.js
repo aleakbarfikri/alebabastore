@@ -1,6 +1,7 @@
 import { pool, query } from './db.js';
 import { decrypt } from './crypto.js';
 import { sendEmail } from './email.js';
+import { markMailboxPasswordDelivered, prepareMailboxDelivery } from './mailboxes.js';
 
 function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, (char) => ({
@@ -14,7 +15,7 @@ export async function fulfillOrder(orderId, { forceResend = false } = {}) {
   try {
     await client.query('BEGIN');
     const locked = await client.query(
-      `SELECT o.*, g.title, g.game_name, g.account_code, g.delivery_credentials
+      `SELECT o.*, g.title, g.game_name, g.account_code, g.delivery_credentials, g.mailbox_id
          FROM orders o JOIN game_accounts g ON g.id=o.game_account_id
         WHERE o.order_id=$1 FOR UPDATE OF o,g`,
       [orderId],
@@ -66,7 +67,11 @@ export async function fulfillOrder(orderId, { forceResend = false } = {}) {
 
   try {
     const credentials = JSON.parse(decrypt(order.delivery_credentials));
-    const codes = credentials.backup_codes.map((code) => `<li><code>${escapeHtml(code)}</code></li>`).join('');
+    const mailbox = await prepareMailboxDelivery(order.mailbox_id, order.buyer_email, { reset: forceResend });
+    const baseUrl = String(process.env.PUBLIC_BASE_URL || '').replace(/\/$/, '');
+    const loginUrl = `${baseUrl}/login`;
+    const backupCodes = Array.isArray(credentials.backup_codes) ? credentials.backup_codes : [];
+    const codes = backupCodes.map((code) => `<li><code>${escapeHtml(code)}</code></li>`).join('');
     await sendEmail({
       to: order.buyer_email,
       subject: `Detail akun ${order.title || order.game_name} — ${order.account_code}`,
@@ -76,9 +81,18 @@ export async function fulfillOrder(orderId, { forceResend = false } = {}) {
         `Kode akun: ${order.account_code}`,
         `Email akun: ${credentials.email}`,
         `Password akun: ${credentials.password}`,
-        '8 kode cadangan Gmail:',
-        ...credentials.backup_codes.map((code, i) => `${i + 1}. ${code}`),
-        'Segera login, ganti password, dan buat ulang kode cadangan demi keamanan.',
+        ...(mailbox ? [
+          '',
+          'AKSES INBOX OTP ALEBABASTORE',
+          `Email inbox: ${mailbox.address}`,
+          `Password inbox: ${mailbox.password}`,
+          `Login inbox: ${loginUrl}`,
+        ] : []),
+        ...(backupCodes.length ? [
+          'Kode pemulihan akun:',
+          ...backupCodes.map((code, i) => `${i + 1}. ${code}`),
+        ] : []),
+        'Simpan detail akun ini di tempat yang aman.',
       ].join('\n'),
       html: `
         <h2>Pembayaran berhasil</h2>
@@ -87,8 +101,13 @@ export async function fulfillOrder(orderId, { forceResend = false } = {}) {
         <strong>Kode akun:</strong> ${escapeHtml(order.account_code)}<br>
         <strong>Email akun:</strong> ${escapeHtml(credentials.email)}<br>
         <strong>Password akun:</strong> ${escapeHtml(credentials.password)}</p>
-        <p><strong>8 kode cadangan Gmail:</strong></p><ol>${codes}</ol>
-        <p>Segera login, ganti password, dan buat ulang kode cadangan demi keamanan.</p>`,
+        ${mailbox ? `<h3>Akses inbox OTP AlebabaStore</h3>
+        <p><strong>Email inbox:</strong> ${escapeHtml(mailbox.address)}<br>
+        <strong>Password inbox:</strong> ${escapeHtml(mailbox.password)}<br>
+        <strong>Login:</strong> <a href="${escapeHtml(loginUrl)}">${escapeHtml(loginUrl)}</a></p>
+        <p>Password inbox hanya dapat direset oleh admin AlebabaStore.</p>` : ''}
+        ${backupCodes.length ? `<p><strong>Kode pemulihan akun:</strong></p><ol>${codes}</ol>` : ''}
+        <p>Simpan detail akun ini di tempat yang aman.</p>`,
       idempotencyKey: forceResend
         ? `alebabastore-${orderId}-resend-${Date.now()}`
         : `alebabastore-${orderId}`,
@@ -98,6 +117,7 @@ export async function fulfillOrder(orderId, { forceResend = false } = {}) {
        delivery_error=NULL,updated_at=now() WHERE id=$1`,
       [order.id],
     );
+    await markMailboxPasswordDelivered(mailbox?.id);
     return { delivered: true, provider: 'resend' };
   } catch (error) {
     await query(

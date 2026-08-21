@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from '@/lib/router.jsx';
-import { Menu, X, Gamepad2, Shield, LogOut, LayoutDashboard } from 'lucide-react';
+import { Menu, X, Gamepad2, LogIn, LogOut, LayoutDashboard, Mail } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -8,11 +8,11 @@ const Header = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
-  const { isAuthenticated, isAdmin, adminLogout } = useAuth();
+  const { isAuthenticated, isAdmin, logout } = useAuth();
 
   const handleLogout = () => {
-    adminLogout();
-    navigate('/admin-login');
+    logout();
+    navigate('/login');
   };
 
   const isActive = (path) => location.pathname === path;
@@ -50,14 +50,14 @@ const Header = () => {
 
             <div className="w-px h-6 bg-border mx-2"></div>
 
-            {isAuthenticated && isAdmin() ? (
+            {isAuthenticated ? (
               <div className="flex items-center gap-2">
                 <Link
-                  to="/admin"
+                  to={isAdmin() ? '/admin' : '/inbox'}
                   className="px-4 py-2 rounded-lg text-sm font-medium bg-secondary/10 text-secondary hover:bg-secondary hover:text-secondary-foreground transition-all flex items-center gap-2"
                 >
-                  <LayoutDashboard className="w-4 h-4" />
-                  Dashboard
+                  {isAdmin() ? <LayoutDashboard className="w-4 h-4" /> : <Mail className="w-4 h-4" />}
+                  {isAdmin() ? 'Dashboard' : 'Inbox OTP'}
                 </Link>
                 <button
                   onClick={handleLogout}
@@ -69,11 +69,11 @@ const Header = () => {
               </div>
             ) : (
               <Link
-                to="/admin-login"
+                to="/login"
                 className="px-4 py-2 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors flex items-center gap-2"
               >
-                <Shield className="w-4 h-4" />
-                Admin Login
+                <LogIn className="w-4 h-4" />
+                Login
               </Link>
             )}
           </nav>
@@ -116,15 +116,15 @@ const Header = () => {
                 Browse Games
               </Link>
 
-              {isAuthenticated && isAdmin() ? (
+              {isAuthenticated ? (
                 <>
                   <Link
-                    to="/admin"
+                    to={isAdmin() ? '/admin' : '/inbox'}
                     onClick={() => setIsMenuOpen(false)}
                     className="block px-4 py-3 rounded-xl font-medium bg-secondary/10 text-secondary hover:bg-secondary hover:text-secondary-foreground transition-all"
                   >
-                    <LayoutDashboard className="w-4 h-4 inline mr-2" />
-                    Dashboard
+                    {isAdmin() ? <LayoutDashboard className="w-4 h-4 inline mr-2" /> : <Mail className="w-4 h-4 inline mr-2" />}
+                    {isAdmin() ? 'Dashboard' : 'Inbox OTP'}
                   </Link>
                   <button
                     onClick={() => {
@@ -139,12 +139,12 @@ const Header = () => {
                 </>
               ) : (
                 <Link
-                  to="/admin-login"
+                  to="/login"
                   onClick={() => setIsMenuOpen(false)}
                   className="block px-4 py-3 rounded-xl font-medium text-muted-foreground hover:bg-muted transition-colors"
                 >
-                  <Shield className="w-4 h-4 inline mr-2" />
-                  Admin Login
+                  <LogIn className="w-4 h-4 inline mr-2" />
+                  Login
                 </Link>
               )}
             </nav>

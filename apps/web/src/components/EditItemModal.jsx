@@ -59,7 +59,7 @@ export default function EditItemModal({ isOpen, onClose, account, onSuccess }) {
         price: account.price?.toString() || '',
         townhall_level: account.townhall_level?.toString() || '',
         account_code: account.account_code || '',
-        credential_email: '',
+        credential_email: account.mailbox_address || '',
         credential_password: '',
         backup_codes: ''
       });
@@ -120,7 +120,7 @@ export default function EditItemModal({ isOpen, onClose, account, onSuccess }) {
           data.append('images', images[i]);
         }
       }
-      if (formData.credential_email || formData.credential_password || formData.backup_codes) {
+      if (formData.credential_password || formData.backup_codes) {
         data.append('credential_email', formData.credential_email);
         data.append('credential_password', formData.credential_password);
         data.append('backup_codes', formData.backup_codes);
@@ -314,10 +314,10 @@ export default function EditItemModal({ isOpen, onClose, account, onSuccess }) {
               <p className="text-xs text-muted-foreground">
                 {account?.credentials_configured ? 'Kredensial sudah tersimpan. Kosongkan semua field untuk mempertahankannya.' : 'Kredensial belum diisi.'}
               </p>
-              <Input type="email" name="credential_email" value={formData.credential_email} onChange={handleInputChange} placeholder="Email akun Gmail" />
-              <Input type="password" name="credential_password" value={formData.credential_password} onChange={handleInputChange} placeholder="Password akun Gmail" />
+              <Input type="email" name="credential_email" value={formData.credential_email} readOnly className="bg-muted text-muted-foreground" placeholder="Email AlebabaStore" />
+              <Input type="password" name="credential_password" value={formData.credential_password} onChange={handleInputChange} placeholder="Password akun game" />
               <Textarea name="backup_codes" value={formData.backup_codes} onChange={handleInputChange} rows={5}
-                placeholder="Tepat 8 kode cadangan Gmail, satu kode per baris" />
+                placeholder="Kode pemulihan akun (opsional), satu kode per baris" />
             </div>
 
             <div className="flex justify-between items-center w-full pt-4 border-t border-border">
