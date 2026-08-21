@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { api } from '@/lib/apiClient';
 import { toast } from 'sonner';
 
@@ -7,15 +7,29 @@ const AuthContext = createContext(null);
 export const AuthProvider = ({ children }) => {
   const [currentUser, setCurrentUser] = useState(null);
   const [initialLoading, setInitialLoading] = useState(true);
+  const authGeneration = useRef(0);
 
   useEffect(() => {
+    const generation = authGeneration.current;
     api('/auth/me')
-      .then(({ user }) => setCurrentUser(user))
-      .catch(() => setCurrentUser(null))
-      .finally(() => setInitialLoading(false));
+      .then(({ user }) => {
+        if (authGeneration.current === generation) setCurrentUser(user);
+      })
+      .catch(() => {
+        if (authGeneration.current === generation) setCurrentUser(null);
+      })
+      .finally(() => {
+        if (authGeneration.current === generation) setInitialLoading(false);
+      });
+
+    return () => {
+      authGeneration.current += 1;
+    };
   }, []);
 
   const login = useCallback(async (identifier, password) => {
+    const generation = ++authGeneration.current;
+    setInitialLoading(false);
     try {
       if (!identifier || !password) {
         throw new Error('Email/username dan password wajib diisi.');
@@ -24,7 +38,7 @@ export const AuthProvider = ({ children }) => {
         method: 'POST',
         body: JSON.stringify({ identifier, password }),
       });
-      if (authData.user) setCurrentUser(authData.user);
+      if (authGeneration.current === generation && authData.user) setCurrentUser(authData.user);
       return authData;
     } catch (error) {
       console.error('[AuthContext] Login failed:', error);
@@ -33,15 +47,19 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const verifyTwoFactor = useCallback(async (code) => {
+    const generation = ++authGeneration.current;
+    setInitialLoading(false);
     const authData = await api('/auth/verify-2fa', {
       method: 'POST',
       body: JSON.stringify({ code }),
     });
-    setCurrentUser(authData.user);
+    if (authGeneration.current === generation) setCurrentUser(authData.user);
     return authData;
   }, []);
 
   const logout = useCallback(async () => {
+    ++authGeneration.current;
+    setInitialLoading(false);
     try {
       await api('/auth/logout', { method: 'POST' });
       setCurrentUser(null);

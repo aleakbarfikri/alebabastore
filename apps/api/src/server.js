@@ -352,6 +352,14 @@ app.use('/api', (req, res, next) => {
   next();
 });
 
+app.use(['/api/auth', '/api/admin', '/api/customer'], (_req, res, next) => {
+  res.set({
+    'Cache-Control': 'no-store, max-age=0',
+    Pragma: 'no-cache',
+  });
+  next();
+});
+
 const loginLimiter = rateLimit({ windowMs: 15 * 60_000, limit: 8, standardHeaders: true, legacyHeaders: false });
 const adminConfirmationLimiter = rateLimit({
   windowMs: 15 * 60_000,
@@ -1209,12 +1217,22 @@ app.patch('/api/admin/settings', requireAdmin, async (req, res) => {
   res.json(await updateSettings(req.body));
 });
 
-app.use((error, _req, res, _next) => {
-  console.error(error);
+app.use((error, req, res, _next) => {
+  const status = Number(error.status) || 500;
+  if (process.env.NODE_ENV === 'production') {
+    console.error('[api-error]', {
+      method: req.method,
+      path: req.path,
+      status,
+      name: error.name || 'Error',
+      code: error.code || undefined,
+    });
+  } else {
+    console.error(error);
+  }
   if (error.code === '23505') return res.status(409).json({ error: 'Data unik sudah digunakan.' });
   if (error.code === '23503') return res.status(409).json({ error: 'Data masih digunakan oleh transaksi lain.' });
   if (error instanceof multer.MulterError) return res.status(400).json({ error: error.message });
-  const status = Number(error.status) || 500;
   res.status(status).json({
     error: status < 500 || process.env.NODE_ENV !== 'production'
       ? error.message
