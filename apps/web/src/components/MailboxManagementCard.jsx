@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Copy, Download, KeyRound, MailPlus, Power, RefreshCw, X } from 'lucide-react';
 import { api } from '@/lib/apiClient.js';
 import { toast } from 'sonner';
@@ -15,6 +15,12 @@ export default function MailboxManagementCard({ domain, mailboxes, onRefresh }) 
   const [codeLength, setCodeLength] = useState(6);
   const [busy, setBusy] = useState(false);
   const [createdCredentials, setCreatedCredentials] = useState([]);
+
+  useEffect(() => {
+    if (!createdCredentials.length) return undefined;
+    const timer = window.setTimeout(() => setCreatedCredentials([]), 10 * 60_000);
+    return () => window.clearTimeout(timer);
+  }, [createdCredentials]);
 
   const credentialsText = (credentials = createdCredentials) => credentials
     .map((mailbox) => `${mailbox.address}\t${mailbox.password}`)
@@ -135,7 +141,7 @@ export default function MailboxManagementCard({ domain, mailboxes, onRefresh }) 
             <div>
               <h3 className="font-semibold text-foreground">Simpan password sekarang</h3>
               <p className="mt-1 text-sm text-muted-foreground">
-                Password hanya ditampilkan untuk batch yang baru dibuat. Salin atau unduh sebelum menutup bagian ini.
+                Password hanya ditampilkan untuk batch yang baru dibuat dan otomatis disembunyikan setelah 10 menit. Salin atau unduh sekarang.
               </p>
             </div>
             <div className="flex flex-wrap gap-2">

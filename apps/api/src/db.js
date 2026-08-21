@@ -18,9 +18,15 @@ if (!databaseUrl) {
   );
 }
 
+const connectionUrl = new URL(databaseUrl);
+if (process.env.NODE_ENV === 'production') {
+  // pg treats sslmode from the URL as an override for the explicit TLS options.
+  connectionUrl.searchParams.delete('sslmode');
+}
+
 export const pool = new Pool({
-  connectionString: databaseUrl,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : undefined,
+  connectionString: connectionUrl.toString(),
+  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: true } : undefined,
   max: Number(process.env.DB_POOL_SIZE || 10),
   idleTimeoutMillis: 30_000,
 });
