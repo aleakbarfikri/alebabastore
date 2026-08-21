@@ -47,7 +47,9 @@ export default function CustomerInboxPage() {
               </div>
               <h1 className="text-3xl font-bold text-foreground">Inbox OTP</h1>
               <p className="mt-2 text-muted-foreground">{currentUser?.email}</p>
-              <p className="text-sm text-muted-foreground">Akun: {currentUser?.account_title} ({currentUser?.account_code})</p>
+              {currentUser?.account_code && (
+                <p className="text-sm text-muted-foreground">Akun: {currentUser.account_title} ({currentUser.account_code})</p>
+              )}
             </div>
             <button
               type="button"
